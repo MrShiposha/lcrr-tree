@@ -10,13 +10,13 @@ impl<CoordT: Ord> Bounds<CoordT> {
         debug_assert!(min < max, "a min bound mast be less than a max bound");
 
         Self {
-            min, 
+            min,
             max
         }
     }
 
     pub fn is_in_bound(&self, value: &CoordT) -> bool {
-        self.min <= *value && *value <= self.max 
+        self.min <= *value && *value <= self.max
     }
 }
 
@@ -78,14 +78,14 @@ pub fn intersects<CoordT: Ord>(lhs: &MBR<CoordT>, rhs: &MBR<CoordT>) -> bool {
     }
 
     debug_assert_eq!(
-        lhs.dimension(), 
-        rhs.dimension(), 
+        lhs.dimension(),
+        rhs.dimension(),
         "unable to compare MBRs with different dimensions"
     );
 
     let mut intersected_axis = 0usize;
     for (self_bound, other_bound) in lhs.bounds.iter().zip(rhs.bounds.iter()) {
-        if self_bound.is_in_bound(&other_bound.min) 
+        if self_bound.is_in_bound(&other_bound.min)
         || self_bound.is_in_bound(&other_bound.max)
         || other_bound.is_in_bound(&self_bound.min) {
             intersected_axis += 1;
@@ -101,8 +101,8 @@ pub fn common_mbr<CoordT: Ord + Clone>(lhs: &MBR<CoordT>, rhs: &MBR<CoordT>) -> 
     }
 
     debug_assert_eq!(
-        lhs.dimension(), 
-        rhs.dimension(), 
+        lhs.dimension(),
+        rhs.dimension(),
         "unable to make common MBR for MBRs with different dimensions"
     );
 
@@ -188,7 +188,7 @@ mod test {
 
         assert!(!mbr::intersects(&mbr_0, &mbr_1));
         assert!(!mbr::intersects(&mbr_1, &mbr_0));
-        
+
         let mbr_1 = mbr! {
             X = [4; 9]
         };
@@ -229,7 +229,7 @@ mod test {
     fn test_multidimensional_mbr_intersects_with() {
         let test_min_bound = 0;
         let test_max_bound = 10;
-        
+
         let max_test_dim = 4;
 
         for dims in 1..=max_test_dim {
