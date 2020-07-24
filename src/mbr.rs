@@ -1,8 +1,8 @@
 use std::ops::{Sub, Mul};
 
 pub struct Bounds<CoordT> {
-    min: CoordT,
-    max: CoordT
+    pub min: CoordT,
+    pub max: CoordT
 }
 
 impl<CoordT: Ord> Bounds<CoordT> {
@@ -51,6 +51,10 @@ impl<CoordT> MBR<CoordT> {
 
     pub fn dimension(&self) -> usize {
         self.bounds.len()
+    }
+
+    pub fn bounds(&self, axis_index: usize) -> &Bounds<CoordT> {
+        &self.bounds[axis_index]
     }
 }
 
@@ -150,6 +154,38 @@ mod test {
         assert_eq!(mbr.bounds[0].max, 10);
         assert_eq!(mbr.bounds[1].min, -10);
         assert_eq!(mbr.bounds[1].max, -1);
+    }
+
+    #[test]
+    fn test_mbr_bounds() {
+        let mbr = mbr! {
+            X = [0; 10]
+        };
+
+        assert_eq!(mbr.dimension(), 1);
+        assert_eq!(mbr.bounds(0).min, 0);
+        assert_eq!(mbr.bounds(0).max, 10);
+
+        let mbr = mbr! {
+            X = [  0; 10],
+            Y = [-10; -1]
+        };
+
+        assert_eq!(mbr.dimension(), 2);
+        assert_eq!(mbr.bounds(0).min, 0);
+        assert_eq!(mbr.bounds(0).max, 10);
+        assert_eq!(mbr.bounds(1).min, -10);
+        assert_eq!(mbr.bounds(1).max, -1)
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_panic_mbr_bounds() {
+        let mbr = mbr! {
+            X = [0; 10]
+        };
+
+        mbr.bounds(mbr.dimension());
     }
 
     #[test]
