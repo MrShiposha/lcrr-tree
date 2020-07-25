@@ -1,2 +1,2 @@
-# mcrr-tree
-Multithreaded Collision Recording R-Tree
+# lcrr-tree
+Locking Collision Recording R-Tree
