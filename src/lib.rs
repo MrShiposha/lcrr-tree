@@ -1,8 +1,7 @@
-mod node;
-pub mod mbr;
 pub mod tree;
 
 pub use tree::*;
+pub use mbr::MBR;
 
 #[macro_export]
 macro_rules! mbr {

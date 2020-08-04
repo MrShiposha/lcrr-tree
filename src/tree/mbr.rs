@@ -1,14 +1,36 @@
-use std::ops::{Sub, Mul};
+use std::{
+    ops::{Sub, Mul, Div},
+    fmt::Debug
+};
 
+pub trait CoordTrait:
+    Debug
+    + Clone
+    + Default
+    + Ord
+    + Sub<Output=Self>
+    + Mul<Output=Self>
+    + Div<Output=Self>
+{}
+
+impl<T> CoordTrait for T
+where T: Debug + Clone + Default + Ord + Sub<Output=T> + Mul<Output=T> + Div<Output=T>
+{}
+
+#[derive(Debug)]
 pub struct Bounds<CoordT> {
     pub min: CoordT,
     pub max: CoordT
 }
 
-impl<CoordT: Ord> Bounds<CoordT> {
+impl<CoordT: CoordTrait> Bounds<CoordT> {
     pub fn new(min: CoordT, max: CoordT) -> Self {
         debug_assert!(min < max, "a min bound mast be less than a max bound");
 
+        unsafe { Self::new_unchecked(min, max) }
+    }
+
+    pub unsafe fn new_unchecked(min: CoordT, max: CoordT) -> Self {
         Self {
             min,
             max
@@ -18,15 +40,13 @@ impl<CoordT: Ord> Bounds<CoordT> {
     pub fn is_in_bound(&self, value: &CoordT) -> bool {
         self.min <= *value && *value <= self.max
     }
-}
 
-impl<CoordT: Sub<Output=CoordT> + Clone> Bounds<CoordT> {
     pub fn length(&self) -> CoordT {
         self.max.clone() - self.min.clone()
     }
 }
 
-impl<CoordT: Clone> Clone for Bounds<CoordT> {
+impl<CoordT: CoordTrait> Clone for Bounds<CoordT> {
     fn clone(&self) -> Self {
         Self {
             min: self.min.clone(),
@@ -35,18 +55,34 @@ impl<CoordT: Clone> Clone for Bounds<CoordT> {
     }
 }
 
+impl<CoordT: PartialEq> PartialEq for Bounds<CoordT> {
+    fn eq(&self, rhs: &Self) -> bool {
+        self.min.eq(&rhs.min) && self.max.eq(&rhs.max)
+     }
+}
+
+impl<CoordT: PartialEq + Eq> Eq for Bounds<CoordT>
+{}
+
 /// Minimum bounding rectangle
+#[derive(Debug)]
 pub struct MBR<CoordT> {
     bounds: Vec<Bounds<CoordT>>
 }
 
-impl<CoordT> MBR<CoordT> {
+impl<CoordT: CoordTrait> MBR<CoordT> {
     pub fn new(bounds: Vec<Bounds<CoordT>>) -> Self {
         debug_assert!(!bounds.is_empty(), "MBR can't be zero-dimension");
 
         Self {
             bounds
         }
+    }
+
+    pub unsafe fn new_singularity(dimension: usize) -> Self {
+        Self::new(vec![
+            Bounds::new_unchecked(CoordT::default(), CoordT::default()); dimension
+        ])
     }
 
     pub fn dimension(&self) -> usize {
@@ -56,9 +92,7 @@ impl<CoordT> MBR<CoordT> {
     pub fn bounds(&self, axis_index: usize) -> &Bounds<CoordT> {
         &self.bounds[axis_index]
     }
-}
 
-impl<CoordT: Sub<Output=CoordT> + Mul<Output=CoordT> + Clone> MBR<CoordT> {
     pub fn volume(&self) -> CoordT {
         let init_volume = self.bounds.first().unwrap().length();
         self.bounds.iter().skip(1).fold(
@@ -68,7 +102,7 @@ impl<CoordT: Sub<Output=CoordT> + Mul<Output=CoordT> + Clone> MBR<CoordT> {
     }
 }
 
-impl<CoordT: Clone> Clone for MBR<CoordT> {
+impl<CoordT: CoordTrait> Clone for MBR<CoordT> {
     fn clone(&self) -> Self {
         Self {
             bounds: self.bounds.clone()
@@ -76,7 +110,16 @@ impl<CoordT: Clone> Clone for MBR<CoordT> {
     }
 }
 
-pub fn intersects<CoordT: Ord>(lhs: &MBR<CoordT>, rhs: &MBR<CoordT>) -> bool {
+impl<CoordT: PartialEq> PartialEq for MBR<CoordT> {
+    fn eq(&self, rhs: &Self) -> bool {
+        self.bounds == rhs.bounds
+    }
+}
+
+impl<CoordT: Eq> Eq for MBR<CoordT>
+{}
+
+pub fn intersects<CoordT: CoordTrait>(lhs: &MBR<CoordT>, rhs: &MBR<CoordT>) -> bool {
     if lhs as *const _ == rhs as *const _ {
         return true;
     }
@@ -99,7 +142,7 @@ pub fn intersects<CoordT: Ord>(lhs: &MBR<CoordT>, rhs: &MBR<CoordT>) -> bool {
     intersected_axis == lhs.dimension()
 }
 
-pub fn common_mbr<CoordT: Ord + Clone>(lhs: &MBR<CoordT>, rhs: &MBR<CoordT>) -> MBR<CoordT> {
+pub fn common_mbr<CoordT: CoordTrait>(lhs: &MBR<CoordT>, rhs: &MBR<CoordT>) -> MBR<CoordT> {
     if lhs as *const _ == rhs as *const _ {
         return lhs.clone();
     }
