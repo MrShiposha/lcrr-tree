@@ -109,7 +109,7 @@ where
             result.push(rec_id.as_node_id())
         });
 
-        return result;
+        result
     }
 
     pub fn insert(&self, object: ObjectT, mbr: MBR<CoordT>) -> NodeId {
@@ -133,7 +133,7 @@ where
         };
 
         Self::fix_tree(&mut storage, leaf_id, extra_leaf_id);
-        return new_object_id.as_node_id();
+        new_object_id.as_node_id()
     }
 
     fn select_leaf(storage: &mut storage![], new_mbr: &MBR<CoordT>) -> RecordId {
