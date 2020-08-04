@@ -270,8 +270,11 @@ where
 
         children.push(extra_child_id);
 
-        let (lhs, rhs) = Self::select_first_pair(storage, &children, dimension);
-        children.retain(|id| *id != lhs && *id != rhs);
+        let (lhs, rhs) = Self::select_first_pair(
+            storage,
+            &mut children,
+            dimension
+        );
 
         bind!([storage] node_id => lhs);
 
@@ -323,10 +326,10 @@ where
 
     fn select_first_pair(
         storage: &mut storage![],
-        records: &Vec<RecordId>,
+        records: &mut Vec<RecordId>,
         dimension: usize
     ) -> (RecordId, RecordId) {
-        (0..dimension).map(|dim|
+        let params = (0..dimension).map(|dim|
             (dim, records.iter())
         ).map(|(dim, mut records)| {
             let first_id = records.next().unwrap();
@@ -335,18 +338,26 @@ where
             let mut max = bounds.max.clone();
             let mut min = bounds.min.clone();
 
+            let mut hi_idx = 0;
             let mut hi_id = first_id;
             let mut hi_min = min.clone();
 
+            let mut lo_idx = 0;
             let mut lo_id = first_id;
             let mut lo_max = max.clone();
 
-            records.for_each(|id| {
+            records.enumerate()
+                .map(|(index, id)| {
+                    // We skipped one element, but we need an index for a whole vector
+                    (index + 1, id)
+                })
+                .for_each(|(index, id)| {
                 let bounds = storage.get_mbr(*id).bounds(dim);
 
                 if bounds.max > max {
                     max = bounds.max.clone();
                 } else if bounds.max < lo_max {
+                    lo_idx = index;
                     lo_id = id;
                     lo_max = bounds.max.clone();
                 }
@@ -354,6 +365,7 @@ where
                 if bounds.min < min {
                     min = bounds.min.clone();
                 } else if bounds.min > hi_min {
+                    hi_idx = index;
                     hi_id = id;
                     hi_min = bounds.min.clone();
                 }
@@ -362,9 +374,14 @@ where
             let length = max - min;
             let d = (lo_max - hi_min) / length;
 
-            (d, (hi_id, lo_id))
-        }).min_by_key(|(d, _)| d.clone())
-        .map(|(_, (lhs, rhs))| (lhs.clone(), rhs.clone())).unwrap()
+            (d, *hi_id, *lo_id, hi_idx, lo_idx)
+        }).min_by_key(|(d, ..)| d.clone()).unwrap();
+
+        let (_, lhs, rhs, lhs_idx, rhs_idx) = params;
+        records.swap_remove(lhs_idx);
+        records.swap_remove(rhs_idx);
+
+        (lhs, rhs)
     }
 
     fn make_node(
