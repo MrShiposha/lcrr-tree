@@ -1,6 +1,6 @@
 use {
+    crate::{mbr, tree::node::NodeId, LCRRTree},
     std::collections::hash_set::HashSet,
-    crate::{LCRRTree, mbr, tree::node::NodeId}
 };
 
 #[test]
@@ -13,7 +13,7 @@ fn test_tree_leaf() {
         mbr! {
             X = [0; 10],
             Y = [0; 10]
-        }
+        },
     );
 
     {
@@ -33,7 +33,7 @@ fn test_tree_leaf() {
         mbr! {
             X = [-5; -3],
             Y = [-5;  5]
-        }
+        },
     );
 
     tree.access_object(second_id, |_, object| {
@@ -83,10 +83,13 @@ fn test_tree_leaf() {
 
     assert_eq!(set, vec![first_id, second_id]);
 
-    let third_id = tree.insert("Third", mbr! {
-        X = [-4; 4],
-        Y = [ 2; 3]
-    });
+    let third_id = tree.insert(
+        "Third",
+        mbr! {
+            X = [-4; 4],
+            Y = [ 2; 3]
+        },
+    );
 
     tree.access_object(third_id, |_, object| {
         assert_eq!(*object, "Third");
@@ -118,7 +121,7 @@ fn test_tree_split() {
         mbr! {
             X = [0; 10],
             Y = [0; 10]
-        }
+        },
     );
 
     tree.insert(
@@ -126,7 +129,7 @@ fn test_tree_split() {
         mbr! {
             X = [11; 21],
             Y = [ 0; 10]
-        }
+        },
     );
 
     tree.insert(
@@ -134,7 +137,7 @@ fn test_tree_split() {
         mbr! {
             X = [22; 32],
             Y = [ 0; 10]
-        }
+        },
     );
 
     tree.insert(
@@ -142,7 +145,7 @@ fn test_tree_split() {
         mbr! {
             X = [ 0; 10],
             Y = [11; 21]
-        }
+        },
     );
 
     tree.insert(
@@ -150,7 +153,7 @@ fn test_tree_split() {
         mbr! {
             X = [11; 21],
             Y = [11; 21]
-        }
+        },
     );
 
     tree.insert(
@@ -158,13 +161,17 @@ fn test_tree_split() {
         mbr! {
             X = [22; 32],
             Y = [11; 21]
-        }
+        },
     );
 
-    let set: HashSet<NodeId> = tree.search(&mbr! {
-        X = [3; 25],
-        Y = [3; 15]
-    }).iter().cloned().collect();
+    let set: HashSet<NodeId> = tree
+        .search(&mbr! {
+            X = [3; 25],
+            Y = [3; 15]
+        })
+        .iter()
+        .cloned()
+        .collect();
 
     let expected: HashSet<NodeId> = [0, 1, 2, 3, 4, 5].iter().cloned().collect();
 

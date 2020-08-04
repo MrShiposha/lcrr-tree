@@ -1,22 +1,22 @@
-mod node;
 pub mod mbr;
+mod node;
 
 #[cfg(test)]
 mod test;
 
 use {
-    std::{
-        sync::{RwLock, RwLockWriteGuard},
-        ops::Deref,
-        cmp::Ordering,
-        iter::Extend
-    },
-    petgraph::graphmap::UnGraphMap,
-    id_cache::Storage,
     crate::tree::{
+        mbr::{CoordTrait, MBR},
         node::{Node, NodeId, RecordId},
-        mbr::{MBR, CoordTrait}
-    }
+    },
+    id_cache::Storage,
+    petgraph::graphmap::UnGraphMap,
+    std::{
+        cmp::Ordering,
+        iter::Extend,
+        ops::Deref,
+        sync::{RwLock, RwLockWriteGuard},
+    },
 };
 
 type ChildIdStorage = Vec<RecordId>;
@@ -40,13 +40,18 @@ macro_rules! storage {
 }
 
 macro_rules! filter_intersections {
-    ($area:ident in $storage:ident) => (|&&child_id| mbr::intersects($storage.get_mbr(child_id), $area));
+    ($area:ident in $storage:ident) => {
+        |&&child_id| mbr::intersects($storage.get_mbr(child_id), $area)
+    };
 }
 
 /// Bind nodes: [storage]: parent node ID => child node ID
 macro_rules! bind {
     ([$storage:expr] $parent_node_id:expr => set($child_ids:expr)) => {
-        $storage.get_node_mut($parent_node_id).payload.reserve($child_ids.len());
+        $storage
+            .get_node_mut($parent_node_id)
+            .payload
+            .reserve($child_ids.len());
         while let Some(child_id) = $child_ids.pop() {
             $storage.set_parent_id(child_id, $parent_node_id);
             $storage.add_child($parent_node_id, child_id);
@@ -60,28 +65,24 @@ macro_rules! bind {
 }
 
 pub struct LCRRTree<CoordT, ObjectT> {
-    storage: RwLock<TreeStorage<CoordT, ObjectT>>
+    storage: RwLock<TreeStorage<CoordT, ObjectT>>,
 }
 
 impl<CoordT, ObjectT> LCRRTree<CoordT, ObjectT>
 where
-    CoordT: CoordTrait
+    CoordT: CoordTrait,
 {
     pub fn new(dimension: usize, min_records: RecordsNum, max_records: RecordsNum) -> Self {
         assert!(0 < min_records && min_records < max_records);
 
-        let storage = RwLock::new(
-            TreeStorage::new(dimension, min_records, max_records)
-        );
+        let storage = RwLock::new(TreeStorage::new(dimension, min_records, max_records));
 
-        Self {
-            storage
-        }
+        Self { storage }
     }
 
     pub fn access_object<H>(&self, record_id: NodeId, mut handler: H)
     where
-        H: FnMut(&MBR<CoordT>, &ObjectT)
+        H: FnMut(&MBR<CoordT>, &ObjectT),
     {
         let storage = self.storage.read().unwrap();
         let node = storage.get_data(record_id);
@@ -104,14 +105,11 @@ where
         let mut result = vec![];
 
         let root_id = storage.root_id;
-        Self::search_helper(
-            &storage,
-            root_id,
-            area,
-            &mut |&rec_id| result.push(rec_id.as_node_id())
-        );
+        Self::search_helper(&storage, root_id, area, &mut |&rec_id| {
+            result.push(rec_id.as_node_id())
+        });
 
-        return result
+        return result;
     }
 
     pub fn insert(&self, object: ObjectT, mbr: MBR<CoordT>) -> NodeId {
@@ -144,29 +142,33 @@ where
         loop {
             match node_id {
                 RecordId::Leaf(_) => return node_id,
-                _ => node_id = *storage.get_node(node_id).payload
-                    .iter()
-                    .map(|child_id| {
-                        let delta = Self::mbr_delta(
-                            storage.get_mbr(*child_id),
-                            new_mbr
-                        );
+                _ => {
+                    node_id = *storage
+                        .get_node(node_id)
+                        .payload
+                        .iter()
+                        .map(|child_id| {
+                            let delta = Self::mbr_delta(storage.get_mbr(*child_id), new_mbr);
 
-                        (child_id, delta)
-                    })
-                    .min_by(|lhs, rhs| {
-                        let (&lhs_id, lhs_delta) = lhs;
-                        let (&rhs_id, rhs_delta) = rhs;
+                            (child_id, delta)
+                        })
+                        .min_by(|lhs, rhs| {
+                            let (&lhs_id, lhs_delta) = lhs;
+                            let (&rhs_id, rhs_delta) = rhs;
 
-                        let ord = lhs_delta.cmp(rhs_delta);
+                            let ord = lhs_delta.cmp(rhs_delta);
 
-                        match ord {
-                            Ordering::Equal => storage.get_mbr(lhs_id).volume().cmp(
-                                &storage.get_mbr(rhs_id).volume()
-                            ),
-                            _ => ord
-                        }
-                    }).map(|(id, _)| id).unwrap()
+                            match ord {
+                                Ordering::Equal => storage
+                                    .get_mbr(lhs_id)
+                                    .volume()
+                                    .cmp(&storage.get_mbr(rhs_id).volume()),
+                                _ => ord,
+                            }
+                        })
+                        .map(|(id, _)| id)
+                        .unwrap()
+                }
             }
         }
     }
@@ -175,15 +177,9 @@ where
         let mut edges = vec![];
         let root_id = storage.root_id;
 
-        Self::search_helper(
-            storage,
-            root_id,
-            mbr,
-            &mut |&rec_id| edges.push((
-                new_object_id.as_node_id(),
-                rec_id.as_node_id()
-            ))
-        );
+        Self::search_helper(storage, root_id, mbr, &mut |&rec_id| {
+            edges.push((new_object_id.as_node_id(), rec_id.as_node_id()))
+        });
 
         storage.collisions.extend(edges);
     }
@@ -197,7 +193,7 @@ where
     fn fix_tree(
         storage: &mut storage![],
         mut node_id: RecordId,
-        mut extra_node_id: Option<RecordId>
+        mut extra_node_id: Option<RecordId>,
     ) {
         let max_records = storage.max_records;
         let mut parent_node_id = storage.get_node(node_id).parent_id;
@@ -209,9 +205,7 @@ where
                     bind!([storage] parent_node_id => new_node_id);
                     extra_node_id = None;
                 } else {
-                    extra_node_id = Some(
-                        Self::split_node(storage, parent_node_id, new_node_id)
-                    );
+                    extra_node_id = Some(Self::split_node(storage, parent_node_id, new_node_id));
                 }
             }
 
@@ -220,9 +214,7 @@ where
         }
 
         if let Some(extra_node_id) = extra_node_id {
-            let new_root_id = RecordId::Internal(
-                Self::make_node(storage, RecordId::Root)
-            );
+            let new_root_id = RecordId::Internal(Self::make_node(storage, RecordId::Root));
 
             storage.get_node_mut(node_id).parent_id = new_root_id;
             storage.get_node_mut(extra_node_id).parent_id = new_root_id;
@@ -237,51 +229,47 @@ where
         storage: &Storage,
         node_id: RecordId,
         area: &MBR<CoordT>,
-        handler: &mut Handler
-    ) where Storage: Deref<Target=TreeStorage<CoordT, ObjectT>>,
-            Handler: FnMut(&RecordId)
+        handler: &mut Handler,
+    ) where
+        Storage: Deref<Target = TreeStorage<CoordT, ObjectT>>,
+        Handler: FnMut(&RecordId),
     {
         let node = storage.get_node(node_id);
         match node_id {
-            RecordId::Leaf(_) => node.payload
+            RecordId::Leaf(_) => node
+                .payload
                 .iter()
                 .filter(filter_intersections!(area in storage))
                 .for_each(|child_id| handler(child_id)),
-            _ => node.payload
+            _ => node
+                .payload
                 .iter()
                 .filter(filter_intersections!(area in storage))
                 .for_each(|&child_id| {
                     Self::search_helper(storage, child_id, area, handler);
-                })
+                }),
         }
     }
 
     fn split_node(
         storage: &mut storage![],
         node_id: RecordId,
-        extra_child_id: RecordId
+        extra_child_id: RecordId,
     ) -> RecordId {
         let max_records = storage.max_records;
         let dimension = storage.dimension;
         let mut children = std::mem::replace(
             &mut storage.get_node_mut(node_id).payload,
-            Self::make_children_storage(max_records)
+            Self::make_children_storage(max_records),
         );
 
         children.push(extra_child_id);
 
-        let (lhs, rhs) = Self::select_first_pair(
-            storage,
-            &mut children,
-            dimension
-        );
+        let (lhs, rhs) = Self::select_first_pair(storage, &mut children, dimension);
 
         bind!([storage] node_id => lhs);
 
-        let new_node_id = Self::make_node(
-            storage,
-            storage.get_node(node_id).parent_id
-        );
+        let new_node_id = Self::make_node(storage, storage.get_node(node_id).parent_id);
 
         let new_node_id = node_id.make_sibling_id(new_node_id);
 
@@ -327,55 +315,58 @@ where
     fn select_first_pair(
         storage: &mut storage![],
         records: &mut Vec<RecordId>,
-        dimension: usize
+        dimension: usize,
     ) -> (RecordId, RecordId) {
-        let params = (0..dimension).map(|dim|
-            (dim, records.iter())
-        ).map(|(dim, mut records)| {
-            let first_id = records.next().unwrap();
-            let bounds = storage.get_mbr(*first_id).bounds(dim);
+        let params = (0..dimension)
+            .map(|dim| (dim, records.iter()))
+            .map(|(dim, mut records)| {
+                let first_id = records.next().unwrap();
+                let bounds = storage.get_mbr(*first_id).bounds(dim);
 
-            let mut max = bounds.max.clone();
-            let mut min = bounds.min.clone();
+                let mut max = bounds.max.clone();
+                let mut min = bounds.min.clone();
 
-            let mut hi_idx = 0;
-            let mut hi_id = first_id;
-            let mut hi_min = min.clone();
+                let mut hi_idx = 0;
+                let mut hi_id = first_id;
+                let mut hi_min = min.clone();
 
-            let mut lo_idx = 0;
-            let mut lo_id = first_id;
-            let mut lo_max = max.clone();
+                let mut lo_idx = 0;
+                let mut lo_id = first_id;
+                let mut lo_max = max.clone();
 
-            records.enumerate()
-                .map(|(index, id)| {
-                    // We skipped one element, but we need an index for a whole vector
-                    (index + 1, id)
-                })
-                .for_each(|(index, id)| {
-                let bounds = storage.get_mbr(*id).bounds(dim);
+                records
+                    .enumerate()
+                    .map(|(index, id)| {
+                        // We skipped one element, but we need an index for a whole vector
+                        (index + 1, id)
+                    })
+                    .for_each(|(index, id)| {
+                        let bounds = storage.get_mbr(*id).bounds(dim);
 
-                if bounds.max > max {
-                    max = bounds.max.clone();
-                } else if bounds.max < lo_max {
-                    lo_idx = index;
-                    lo_id = id;
-                    lo_max = bounds.max.clone();
-                }
+                        if bounds.max > max {
+                            max = bounds.max.clone();
+                        } else if bounds.max < lo_max {
+                            lo_idx = index;
+                            lo_id = id;
+                            lo_max = bounds.max.clone();
+                        }
 
-                if bounds.min < min {
-                    min = bounds.min.clone();
-                } else if bounds.min > hi_min {
-                    hi_idx = index;
-                    hi_id = id;
-                    hi_min = bounds.min.clone();
-                }
-            });
+                        if bounds.min < min {
+                            min = bounds.min.clone();
+                        } else if bounds.min > hi_min {
+                            hi_idx = index;
+                            hi_id = id;
+                            hi_min = bounds.min.clone();
+                        }
+                    });
 
-            let length = max - min;
-            let d = (lo_max - hi_min) / length;
+                let length = max - min;
+                let d = (lo_max - hi_min) / length;
 
-            (d, *hi_id, *lo_id, hi_idx, lo_idx)
-        }).min_by_key(|(d, ..)| d.clone()).unwrap();
+                (d, *hi_id, *lo_id, hi_idx, lo_idx)
+            })
+            .min_by_key(|(d, ..)| d.clone())
+            .unwrap();
 
         let (_, lhs, rhs, lhs_idx, rhs_idx) = params;
         records.swap_remove(lhs_idx);
@@ -384,14 +375,11 @@ where
         (lhs, rhs)
     }
 
-    fn make_node(
-        storage: &mut storage![],
-        parent_id: RecordId
-    ) -> NodeId {
+    fn make_node(storage: &mut storage![], parent_id: RecordId) -> NodeId {
         let node = Node {
             parent_id,
             mbr: unsafe { MBR::new_singularity(storage.dimension) },
-            payload: Self::make_children_storage(storage.max_records)
+            payload: Self::make_children_storage(storage.max_records),
         };
 
         storage.nodes.insert(node)
@@ -401,12 +389,12 @@ where
         storage: &mut storage![],
         parent_id: RecordId,
         object: ObjectT,
-        mbr: MBR<CoordT>
+        mbr: MBR<CoordT>,
     ) -> RecordId {
         let node = Node {
             parent_id,
             mbr,
-            payload: object
+            payload: object,
         };
 
         RecordId::Data(storage.data_nodes.insert(node))
@@ -424,7 +412,7 @@ struct TreeStorage<CoordT, ObjectT> {
     min_records: RecordsNum,
     max_records: RecordsNum,
     root_id: RecordId,
-    collisions: UnGraphMap<NodeId, ()>
+    collisions: UnGraphMap<NodeId, ()>,
 }
 
 impl<CoordT: CoordTrait, ObjectT> TreeStorage<CoordT, ObjectT> {
@@ -434,12 +422,10 @@ impl<CoordT: CoordTrait, ObjectT> TreeStorage<CoordT, ObjectT> {
         let root_node = Node {
             parent_id: RecordId::Root,
             mbr: unsafe { MBR::new_singularity(dimension) },
-            payload: LCRRTree::<CoordT, ObjectT>::make_children_storage(max_records)
+            payload: LCRRTree::<CoordT, ObjectT>::make_children_storage(max_records),
         };
 
-        let root_id = RecordId::Leaf(
-            nodes.insert(root_node)
-        );
+        let root_id = RecordId::Leaf(nodes.insert(root_node));
 
         Self {
             nodes,
@@ -448,7 +434,7 @@ impl<CoordT: CoordTrait, ObjectT> TreeStorage<CoordT, ObjectT> {
             min_records,
             max_records,
             root_id,
-            collisions: UnGraphMap::new()
+            collisions: UnGraphMap::new(),
         }
     }
 
@@ -462,7 +448,7 @@ impl<CoordT: CoordTrait, ObjectT> TreeStorage<CoordT, ObjectT> {
     fn set_parent_id(&mut self, id: RecordId, parent_id: RecordId) {
         match id {
             RecordId::Data(id) => self.data_nodes.get_mut(id).parent_id = parent_id,
-            _ => self.nodes.get_mut(id.as_node_id()).parent_id = parent_id
+            _ => self.nodes.get_mut(id.as_node_id()).parent_id = parent_id,
         }
     }
 
@@ -484,7 +470,7 @@ impl<CoordT: CoordTrait, ObjectT> TreeStorage<CoordT, ObjectT> {
     fn get_mbr(&self, id: RecordId) -> &MBR<CoordT> {
         match id {
             RecordId::Data(id) => &self.data_nodes.get(id).mbr,
-            _ => &self.nodes.get(id.as_node_id()).mbr
+            _ => &self.nodes.get(id.as_node_id()).mbr,
         }
     }
 

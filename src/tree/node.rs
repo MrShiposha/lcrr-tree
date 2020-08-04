@@ -1,7 +1,4 @@
-use {
-    id_cache::Id,
-    crate::mbr::MBR
-};
+use {crate::mbr::MBR, id_cache::Id};
 
 pub type NodeId = Id;
 
@@ -10,7 +7,7 @@ pub enum RecordId {
     Root,
     Internal(NodeId),
     Leaf(NodeId),
-    Data(NodeId)
+    Data(NodeId),
 }
 
 impl RecordId {
@@ -36,5 +33,5 @@ impl RecordId {
 pub struct Node<CoordT, PayloadT> {
     pub(crate) parent_id: RecordId,
     pub(crate) mbr: MBR<CoordT>,
-    pub(crate) payload: PayloadT
+    pub(crate) payload: PayloadT,
 }

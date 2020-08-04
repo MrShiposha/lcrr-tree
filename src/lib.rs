@@ -1,7 +1,7 @@
 pub mod tree;
 
-pub use tree::*;
 pub use mbr::MBR;
+pub use tree::*;
 
 #[macro_export]
 macro_rules! mbr {
