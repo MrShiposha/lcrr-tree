@@ -9,3 +9,7 @@ edition = "2018"
 [dependencies]
 petgraph = "0.5.1"
 id-cache = { git = "https://github.com/MrShiposha/id-cache.git" }
+
+[dev-dependencies.cargo-husky]
+version = "1"
+features = ["run-cargo-test", "run-cargo-clippy", "run-cargo-fmt"]
