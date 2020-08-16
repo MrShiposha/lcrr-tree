@@ -1,4 +1,4 @@
-use super::{Node, InternalNode};
+use super::{InternalNode, Node};
 
 pub trait Visitor<CoordT, ObjectT> {
     fn enter_node(&mut self, node: &InternalNode<CoordT>);

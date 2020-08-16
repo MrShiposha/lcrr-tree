@@ -122,7 +122,7 @@ impl<CoordT: CoordTrait> Display for MBR<CoordT> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "MBR {{ ")?;
         for (i, bound) in self.bounds.iter().enumerate() {
-            write!(f, "x{}: [{:?}; {:?}] ", i+1, bound.min, bound.max)?;
+            write!(f, "x{}: [{:?}; {:?}] ", i + 1, bound.min, bound.max)?;
         }
         write!(f, "}}")?;
         Ok(())

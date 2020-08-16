@@ -1,6 +1,10 @@
 use {
-    crate::{mbr, tree::node::{NodeId, RecordId, Node}, LCRRTree, Visitor, InternalNode},
-    std::{collections::hash_set::HashSet}
+    crate::{
+        mbr,
+        tree::node::{Node, NodeId, RecordId},
+        InternalNode, LCRRTree, Visitor,
+    },
+    std::collections::hash_set::HashSet,
 };
 
 include!("../../tests/res/test_logger.rs");
@@ -198,7 +202,7 @@ fn test_tree_same_delta() {
     let first_node_id = RecordId::Leaf(storage.nodes.insert(Node {
         parent_id: RecordId::Root,
         mbr: first_mbr.clone(),
-        payload: vec![]
+        payload: vec![],
     }));
 
     let second_mbr = mbr! {
@@ -208,7 +212,7 @@ fn test_tree_same_delta() {
     let second_node_id = RecordId::Leaf(storage.nodes.insert(Node {
         parent_id: RecordId::Root,
         mbr: second_mbr.clone(),
-        payload: vec![]
+        payload: vec![],
     }));
 
     let root_id = storage.root_id;
@@ -224,7 +228,7 @@ fn test_tree_same_delta() {
             X = [0; 3],
             Y = [0; 3]
         },
-        payload: 0
+        payload: 0,
     }));
 
     let node_0_data_1 = RecordId::Data(storage.data_nodes.insert(Node {
@@ -233,7 +237,7 @@ fn test_tree_same_delta() {
             X = [4; 5],
             Y = [4; 5]
         },
-        payload: 1
+        payload: 1,
     }));
 
     let node_1_data_0 = RecordId::Data(storage.data_nodes.insert(Node {
@@ -242,7 +246,7 @@ fn test_tree_same_delta() {
             X = [13; 14],
             Y = [-1; 0]
         },
-        payload: 0
+        payload: 0,
     }));
 
     let node_1_data_1 = RecordId::Data(storage.data_nodes.insert(Node {
@@ -251,7 +255,7 @@ fn test_tree_same_delta() {
             X = [13; 14],
             Y = [3; 4]
         },
-        payload: 1
+        payload: 1,
     }));
 
     let first = storage.get_node_mut(first_node_id);
@@ -268,7 +272,7 @@ fn test_tree_same_delta() {
         mbr! {
             X = [8; 10],
             Y = [3; 5]
-        }
+        },
     );
 
     let storage = tree.storage.read().unwrap();
@@ -279,14 +283,12 @@ fn test_tree_same_delta() {
 #[test]
 fn test_tree_visitor() {
     struct TestVisitor {
-        lvl: usize
+        lvl: usize,
     }
 
     impl TestVisitor {
         fn new() -> Self {
-            Self {
-                lvl: 0
-            }
+            Self { lvl: 0 }
         }
     }
 
@@ -296,7 +298,7 @@ fn test_tree_visitor() {
                 RecordId::Root => assert_eq!(self.lvl, 0),
                 RecordId::Internal(_) => assert_eq!(self.lvl, 1),
                 RecordId::Leaf(_) => assert_eq!(self.lvl, 2),
-                _ => unreachable!()
+                _ => unreachable!(),
             }
 
             self.lvl += 1;

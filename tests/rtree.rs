@@ -1,13 +1,8 @@
 use {
-    std::{
-        path::Path,
-        fs::read_dir,
-        env,
-        collections::HashSet,
-    },
+    lcrr_tree::{mbr, LCRRTree, MBR},
     regex::Regex,
-    rtree_test::{TestCase, Rect, Coord},
-    lcrr_tree::{LCRRTree, MBR, mbr},
+    rtree_test::{Coord, Rect, TestCase},
+    std::{collections::HashSet, env, fs::read_dir, path::Path},
 };
 
 include!("../tests/res/test_logger.rs");
@@ -19,21 +14,24 @@ fn rtree_cases() {
     init_logger();
 
     let cases_dir = Path::new(TEST_CASES_DIR);
-    assert!(cases_dir.is_dir(), "`{}` is expected to be a directory", TEST_CASES_DIR);
+    assert!(
+        cases_dir.is_dir(),
+        "`{}` is expected to be a directory",
+        TEST_CASES_DIR
+    );
 
     let regex = match env::var("RTT_REGEX") {
         Ok(var) => Regex::new(&var),
-        _ => Regex::new(".*")
+        _ => Regex::new(".*"),
     };
 
     assert!(regex.is_ok(), "$RTT_REGEX contains invalid regex");
     let regex = regex.unwrap();
 
-    let dir_iter = read_dir(cases_dir).unwrap()
+    let dir_iter = read_dir(cases_dir)
+        .unwrap()
         .map(|entry| entry.unwrap().path())
-        .filter(|path| regex.is_match(
-            &path.to_string_lossy()
-        ));
+        .filter(|path| regex.is_match(&path.to_string_lossy()));
 
     for path in dir_iter {
         handle_test_case(&path);
@@ -41,7 +39,11 @@ fn rtree_cases() {
 }
 
 fn handle_test_case(path: &Path) {
-    assert!(path.is_file(), "`{}` is expected to be a file", path.display());
+    assert!(
+        path.is_file(),
+        "`{}` is expected to be a file",
+        path.display()
+    );
     println!("case: `{}`", path.file_name().unwrap().to_string_lossy());
 
     let case = TestCase::load(path);
@@ -55,10 +57,11 @@ fn test_case_helper(case: TestCase) {
         rtree.insert(i, as_mbr(rect));
     }
 
-    let founded = rtree.search(&as_mbr(&case.search_rect))
-        .iter().map(|&id| {
-            rtree.access_object(id, |_, &i| i)
-        }).collect::<HashSet<_>>();
+    let founded = rtree
+        .search(&as_mbr(&case.search_rect))
+        .iter()
+        .map(|&id| rtree.access_object(id, |_, &i| i))
+        .collect::<HashSet<_>>();
 
     assert_eq!(founded, case.founded);
 }

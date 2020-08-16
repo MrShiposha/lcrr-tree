@@ -1,6 +1,6 @@
 pub mod mbr;
-pub mod visitor;
 mod node;
+pub mod visitor;
 
 #[cfg(test)]
 pub mod test;
@@ -11,20 +11,20 @@ use {
         node::RecordId,
     },
     id_cache::Storage,
+    log::debug,
     petgraph::graphmap::UnGraphMap,
     std::{
-        env,
         cmp::Ordering,
+        env,
+        fmt::Debug,
         iter::Extend,
         ops::Deref,
         sync::{RwLock, RwLockWriteGuard},
-        fmt::Debug,
     },
-    log::debug
 };
 
-pub use node::{Node, NodeId};
 pub use crate::tree::visitor::Visitor;
+pub use node::{Node, NodeId};
 
 pub type ChildIdStorage = Vec<RecordId>;
 pub type InternalNode<CoordT> = Node<CoordT, ChildIdStorage>;
@@ -93,14 +93,16 @@ pub struct LCRRTree<CoordT, ObjectT> {
 impl<CoordT, ObjectT> LCRRTree<CoordT, ObjectT>
 where
     CoordT: CoordTrait,
-    ObjectT: Debug
+    ObjectT: Debug,
 {
     pub fn new(dimension: usize, min_records: RecordsNum, max_records: RecordsNum) -> Self {
         assert!(0 < min_records && min_records < max_records);
 
         debug_log!(
             "create new tree: dimension = {}, min_records = {}, max_records = {}",
-            dimension, min_records, max_records
+            dimension,
+            min_records,
+            max_records
         );
 
         let storage = RwLock::new(TreeStorage::new(dimension, min_records, max_records));
@@ -189,8 +191,8 @@ where
             match node_id {
                 RecordId::Leaf(_) => {
                     debug_log!("leaf for {} -- {:?}", new_mbr, node_id);
-                    return node_id
-                },
+                    return node_id;
+                }
                 _ => {
                     node_id = *storage
                         .get_node(node_id)
