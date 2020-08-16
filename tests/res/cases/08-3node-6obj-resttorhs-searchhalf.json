@@ -1,0 +1,51 @@
+{
+  "data_rects": [
+    {
+      "top": 96,
+      "left": 210,
+      "bottom": 141,
+      "right": 283
+    },
+    {
+      "top": 211,
+      "left": 497,
+      "bottom": 239,
+      "right": 551
+    },
+    {
+      "top": 246,
+      "left": 513,
+      "bottom": 283,
+      "right": 556
+    },
+    {
+      "top": 283,
+      "left": 496,
+      "bottom": 332,
+      "right": 550
+    },
+    {
+      "top": 300,
+      "left": 209,
+      "bottom": 364,
+      "right": 267
+    },
+    {
+      "top": 335,
+      "left": 522,
+      "bottom": 375,
+      "right": 581
+    }
+  ],
+  "search_rect": {
+    "top": 168,
+    "left": 251,
+    "bottom": 372,
+    "right": 509
+  },
+  "founded": [
+    4,
+    3,
+    1
+  ]
+}

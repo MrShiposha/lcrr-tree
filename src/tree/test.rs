@@ -1,10 +1,14 @@
 use {
-    crate::{mbr, tree::node::NodeId, LCRRTree},
-    std::collections::hash_set::HashSet,
+    crate::{mbr, tree::node::{NodeId, RecordId, Node}, LCRRTree},
+    std::{collections::hash_set::HashSet}
 };
+
+include!("../../tests/res/test_logger.rs");
 
 #[test]
 fn test_tree_leaf() {
+    init_logger();
+
     let tree = LCRRTree::new(2, 2, 5);
     let root_id = tree.storage.read().unwrap().root_id;
 
@@ -115,6 +119,8 @@ fn test_tree_leaf() {
 
 #[test]
 fn test_tree_split() {
+    init_logger();
+
     let tree = LCRRTree::new(2, 2, 5);
     tree.insert(
         1,
@@ -176,4 +182,96 @@ fn test_tree_split() {
     let expected: HashSet<NodeId> = [0, 1, 2, 3, 4, 5].iter().cloned().collect();
 
     assert_eq!(set, expected);
+}
+
+#[test]
+fn test_tree_same_delta() {
+    init_logger();
+
+    let tree = LCRRTree::new(2, 2, 5);
+    let mut storage = tree.storage.write().unwrap();
+
+    let first_mbr = mbr! {
+        X = [0; 5],
+        Y = [0; 5]
+    };
+    let first_node_id = RecordId::Leaf(storage.nodes.insert(Node {
+        parent_id: RecordId::Root,
+        mbr: first_mbr.clone(),
+        payload: vec![]
+    }));
+
+    let second_mbr = mbr! {
+        X = [12; 13],
+        Y = [-1; 4]
+    };
+    let second_node_id = RecordId::Leaf(storage.nodes.insert(Node {
+        parent_id: RecordId::Root,
+        mbr: second_mbr.clone(),
+        payload: vec![]
+    }));
+
+    let root_id = storage.root_id;
+    let root = storage.nodes.get_mut(root_id.as_node_id());
+    root.payload.push(first_node_id);
+    root.payload.push(second_node_id);
+    root.mbr = mbr::common_mbr(&first_mbr, &second_mbr);
+    storage.root_id = RecordId::Internal(root_id.as_node_id());
+
+    let node_0_data_0 = RecordId::Data(storage.data_nodes.insert(Node {
+        parent_id: first_node_id,
+        mbr: mbr! {
+            X = [0; 3],
+            Y = [0; 3]
+        },
+        payload: 0
+    }));
+
+    let node_0_data_1 = RecordId::Data(storage.data_nodes.insert(Node {
+        parent_id: first_node_id,
+        mbr: mbr! {
+            X = [4; 5],
+            Y = [4; 5]
+        },
+        payload: 1
+    }));
+
+    let node_1_data_0 = RecordId::Data(storage.data_nodes.insert(Node {
+        parent_id: second_node_id,
+        mbr: mbr! {
+            X = [13; 14],
+            Y = [-1; 0]
+        },
+        payload: 0
+    }));
+
+    let node_1_data_1 = RecordId::Data(storage.data_nodes.insert(Node {
+        parent_id: second_node_id,
+        mbr: mbr! {
+            X = [13; 14],
+            Y = [3; 4]
+        },
+        payload: 1
+    }));
+
+    let first = storage.get_node_mut(first_node_id);
+    first.payload.push(node_0_data_0);
+    first.payload.push(node_0_data_1);
+
+    let second = storage.get_node_mut(second_node_id);
+    second.payload.push(node_1_data_0);
+    second.payload.push(node_1_data_1);
+    std::mem::drop(storage);
+
+    let test_record_id = tree.insert(
+        2,
+        mbr! {
+            X = [8; 10],
+            Y = [3; 5]
+        }
+    );
+
+    let storage = tree.storage.read().unwrap();
+    let test_leaf_id = storage.get_data(test_record_id).parent_id;
+    assert_eq!(test_leaf_id, second_node_id);
 }

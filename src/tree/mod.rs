@@ -2,7 +2,7 @@ pub mod mbr;
 mod node;
 
 #[cfg(test)]
-mod test;
+pub mod test;
 
 use {
     crate::tree::{
@@ -12,11 +12,14 @@ use {
     id_cache::Storage,
     petgraph::graphmap::UnGraphMap,
     std::{
+        env,
         cmp::Ordering,
         iter::Extend,
         ops::Deref,
         sync::{RwLock, RwLockWriteGuard},
+        fmt::Debug,
     },
+    log::debug
 };
 
 type ChildIdStorage = Vec<RecordId>;
@@ -45,20 +48,34 @@ macro_rules! filter_intersections {
     };
 }
 
+macro_rules! debug_log {
+    ($($tt:tt)*) => {
+        debug! {
+            target: env!("CARGO_PKG_NAME"),
+            $($tt)*
+        }
+    };
+}
+
 /// Bind nodes: [storage]: parent node ID => child node ID
 macro_rules! bind {
     ([$storage:expr] $parent_node_id:expr => set($child_ids:expr)) => {
+        debug_log!("bind set into Parent({:?})", $parent_node_id);
+
         $storage
             .get_node_mut($parent_node_id)
             .payload
             .reserve($child_ids.len());
         while let Some(child_id) = $child_ids.pop() {
-            $storage.set_parent_id(child_id, $parent_node_id);
-            $storage.add_child($parent_node_id, child_id);
+            bind!([$storage] $parent_node_id => child_id);
         }
+
+        debug_log!("[COMPLETED] bind set into Parent({:?})", $parent_node_id);
     };
 
     ([$storage:expr] $parent_node_id:expr => $child_id:expr) => {
+        debug_log!("bind: Parent({:?}) -> Child({:?})", $parent_node_id, $child_id);
+
         $storage.set_parent_id($child_id, $parent_node_id);
         $storage.add_child($parent_node_id, $child_id);
     };
@@ -71,21 +88,29 @@ pub struct LCRRTree<CoordT, ObjectT> {
 impl<CoordT, ObjectT> LCRRTree<CoordT, ObjectT>
 where
     CoordT: CoordTrait,
+    ObjectT: Debug
 {
     pub fn new(dimension: usize, min_records: RecordsNum, max_records: RecordsNum) -> Self {
         assert!(0 < min_records && min_records < max_records);
+
+        debug_log!(
+            "create new tree: dimension = {}, min_records = {}, max_records = {}",
+            dimension, min_records, max_records
+        );
 
         let storage = RwLock::new(TreeStorage::new(dimension, min_records, max_records));
 
         Self { storage }
     }
 
-    pub fn access_object<H>(&self, record_id: NodeId, mut handler: H)
+    pub fn access_object<H, R>(&self, record_id: NodeId, mut handler: H) -> R
     where
-        H: FnMut(&MBR<CoordT>, &ObjectT),
+        H: FnMut(&MBR<CoordT>, &ObjectT) -> R,
     {
         let storage = self.storage.read().unwrap();
         let node = storage.get_data(record_id);
+
+        debug_log!("access object #{}, payload: {:?}", record_id, node.payload);
 
         handler(&node.mbr, &node.payload)
     }
@@ -104,10 +129,14 @@ where
         let storage = self.storage.read().unwrap();
         let mut result = vec![];
 
+        debug_log!("search in area {}", area);
+
         let root_id = storage.root_id;
         Self::search_helper(&storage, root_id, area, &mut |&rec_id| {
             result.push(rec_id.as_node_id())
         });
+
+        debug_log!("search result in area {} -- {:?}", area, result);
 
         result
     }
@@ -115,6 +144,8 @@ where
     pub fn insert(&self, object: ObjectT, mbr: MBR<CoordT>) -> NodeId {
         let mut storage = self.storage.write().unwrap();
         assert_eq!(mbr.dimension(), storage.dimension, "unexpected dimension");
+
+        debug_log!("insert {:?} with {}", object, mbr);
 
         let max_records = storage.max_records;
 
@@ -133,15 +164,24 @@ where
         };
 
         Self::fix_tree(&mut storage, leaf_id, extra_leaf_id);
-        new_object_id.as_node_id()
+
+        let node_id = new_object_id.as_node_id();
+        debug_log!("[COMPLETED] inserted object #{} with {}", node_id, mbr);
+
+        node_id
     }
 
     fn select_leaf(storage: &mut storage![], new_mbr: &MBR<CoordT>) -> RecordId {
         let mut node_id = storage.root_id;
 
+        debug_log!("select leaf for {}", new_mbr);
+
         loop {
             match node_id {
-                RecordId::Leaf(_) => return node_id,
+                RecordId::Leaf(_) => {
+                    debug_log!("leaf for {} -- {:?}", new_mbr, node_id);
+                    return node_id
+                },
                 _ => {
                     node_id = *storage
                         .get_node(node_id)
@@ -149,6 +189,8 @@ where
                         .iter()
                         .map(|child_id| {
                             let delta = Self::mbr_delta(storage.get_mbr(*child_id), new_mbr);
+
+                            debug_log!("{}, delta for {:?} = {:?}", new_mbr, child_id, delta);
 
                             (child_id, delta)
                         })
@@ -181,6 +223,8 @@ where
             edges.push((new_object_id.as_node_id(), rec_id.as_node_id()))
         });
 
+        debug_log!("collisions for {:?}, {} -- {:?}", new_object_id, mbr, edges);
+
         storage.collisions.extend(edges);
     }
 
@@ -195,9 +239,13 @@ where
         mut node_id: RecordId,
         mut extra_node_id: Option<RecordId>,
     ) {
+        debug_log!("fix tree");
+
         let max_records = storage.max_records;
         let mut parent_node_id = storage.get_node(node_id).parent_id;
         while !matches![parent_node_id, RecordId::Root] {
+            debug_log!("fix {:?}", node_id);
+
             if let Some(new_node_id) = extra_node_id {
                 let parent = storage.get_node_mut(parent_node_id);
 
@@ -214,6 +262,8 @@ where
         }
 
         if let Some(extra_node_id) = extra_node_id {
+            debug_log!("fix root {:?}", node_id);
+
             let new_root_id = RecordId::Internal(Self::make_node(storage, RecordId::Root));
 
             storage.get_node_mut(node_id).parent_id = new_root_id;
@@ -223,6 +273,8 @@ where
             bind!([storage] new_root_id => extra_node_id);
             storage.root_id = new_root_id;
         }
+
+        debug_log!("[COMPLETED] fix tree");
     }
 
     fn search_helper<Storage, Handler>(
@@ -256,6 +308,8 @@ where
         node_id: RecordId,
         extra_child_id: RecordId,
     ) -> RecordId {
+        debug_log!("split {:?}", node_id);
+
         let max_records = storage.max_records;
         let dimension = storage.dimension;
         let mut children = std::mem::replace(
@@ -266,6 +320,7 @@ where
         children.push(extra_child_id);
 
         let (lhs, rhs) = Self::select_first_pair(storage, &mut children, dimension);
+        debug_log!("select first pair = ({:?}, {:?})", lhs, rhs);
 
         bind!([storage] node_id => lhs);
 
@@ -309,6 +364,7 @@ where
             }
         }
 
+        debug_log!("[COMPLETED] split {:?}", node_id);
         new_node_id
     }
 
@@ -415,7 +471,7 @@ struct TreeStorage<CoordT, ObjectT> {
     collisions: UnGraphMap<NodeId, ()>,
 }
 
-impl<CoordT: CoordTrait, ObjectT> TreeStorage<CoordT, ObjectT> {
+impl<CoordT: CoordTrait, ObjectT: Debug> TreeStorage<CoordT, ObjectT> {
     fn new(dimension: usize, min_records: RecordsNum, max_records: RecordsNum) -> Self {
         let mut nodes = Storage::new();
 

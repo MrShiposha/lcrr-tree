@@ -1,0 +1,33 @@
+{
+  "data_rects": [
+    {
+      "top": 213,
+      "left": 327,
+      "bottom": 318,
+      "right": 464
+    },
+    {
+      "top": 304,
+      "left": 173,
+      "bottom": 391,
+      "right": 306
+    },
+    {
+      "top": 239,
+      "left": 232,
+      "bottom": 337,
+      "right": 367
+    }
+  ],
+  "search_rect": {
+    "top": 258,
+    "left": 262,
+    "bottom": 356,
+    "right": 366
+  },
+  "founded": [
+    1,
+    2,
+    0
+  ]
+}

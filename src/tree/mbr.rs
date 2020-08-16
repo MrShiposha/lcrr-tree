@@ -1,5 +1,5 @@
 use std::{
-    fmt::Debug,
+    fmt::{self, Debug, Display},
     ops::{Div, Mul, Sub},
 };
 
@@ -26,6 +26,9 @@ impl<CoordT: CoordTrait> Bounds<CoordT> {
         unsafe { Self::new_unchecked(min, max) }
     }
 
+    /// # Safety
+    ///
+    /// `min` must be less than `max`
     pub unsafe fn new_unchecked(min: CoordT, max: CoordT) -> Self {
         Self { min, max }
     }
@@ -69,6 +72,9 @@ impl<CoordT: CoordTrait> MBR<CoordT> {
         Self { bounds }
     }
 
+    /// # Safety
+    ///
+    /// Use it only as "uninit" state
     pub unsafe fn new_singularity(dimension: usize) -> Self {
         Self::new(vec![
             Bounds::new_unchecked(
@@ -111,6 +117,17 @@ impl<CoordT: PartialEq> PartialEq for MBR<CoordT> {
 }
 
 impl<CoordT: Eq> Eq for MBR<CoordT> {}
+
+impl<CoordT: CoordTrait> Display for MBR<CoordT> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "MBR {{ ")?;
+        for (i, bound) in self.bounds.iter().enumerate() {
+            write!(f, "x{}: [{:?}; {:?}] ", i+1, bound.min, bound.max)?;
+        }
+        write!(f, "}}")?;
+        Ok(())
+    }
+}
 
 pub fn intersects<CoordT: CoordTrait>(lhs: &MBR<CoordT>, rhs: &MBR<CoordT>) -> bool {
     if lhs as *const _ == rhs as *const _ {
