@@ -1,5 +1,5 @@
 use {
-    crate::{mbr, tree::node::{NodeId, RecordId, Node}, LCRRTree},
+    crate::{mbr, tree::node::{NodeId, RecordId, Node}, LCRRTree, Visitor, InternalNode},
     std::{collections::hash_set::HashSet}
 };
 
@@ -274,4 +274,143 @@ fn test_tree_same_delta() {
     let storage = tree.storage.read().unwrap();
     let test_leaf_id = storage.get_data(test_record_id).parent_id;
     assert_eq!(test_leaf_id, second_node_id);
+}
+
+#[test]
+fn test_tree_visitor() {
+    struct TestVisitor {
+        lvl: usize
+    }
+
+    impl TestVisitor {
+        fn new() -> Self {
+            Self {
+                lvl: 0
+            }
+        }
+    }
+
+    impl Visitor<i32, i32> for TestVisitor {
+        fn enter_node(&mut self, node: &InternalNode<i32>) {
+            match node.parent_id {
+                RecordId::Root => assert_eq!(self.lvl, 0),
+                RecordId::Internal(_) => assert_eq!(self.lvl, 1),
+                RecordId::Leaf(_) => assert_eq!(self.lvl, 2),
+                _ => unreachable!()
+            }
+
+            self.lvl += 1;
+        }
+
+        fn leave_node(&mut self, _: &InternalNode<i32>) {
+            self.lvl -= 1;
+        }
+
+        fn visit_data(&mut self, node: &Node<i32, i32>) {
+            assert!(matches!(node.payload, 1..=12));
+            assert_eq!(self.lvl, 2);
+        }
+    }
+
+    init_logger();
+
+    let tree = LCRRTree::new(2, 2, 5);
+    tree.insert(
+        1,
+        mbr! {
+            X = [0; 10],
+            Y = [0; 10]
+        },
+    );
+
+    tree.insert(
+        2,
+        mbr! {
+            X = [11; 21],
+            Y = [ 0; 10]
+        },
+    );
+
+    tree.insert(
+        3,
+        mbr! {
+            X = [22; 32],
+            Y = [ 0; 10]
+        },
+    );
+
+    tree.insert(
+        4,
+        mbr! {
+            X = [ 0; 10],
+            Y = [11; 21]
+        },
+    );
+
+    tree.insert(
+        5,
+        mbr! {
+            X = [11; 21],
+            Y = [11; 21]
+        },
+    );
+
+    tree.insert(
+        6,
+        mbr! {
+            X = [22; 32],
+            Y = [11; 21]
+        },
+    );
+
+    tree.insert(
+        7,
+        mbr! {
+            X = [32; 42],
+            Y = [11; 21]
+        },
+    );
+
+    tree.insert(
+        8,
+        mbr! {
+            X = [42; 52],
+            Y = [11; 21]
+        },
+    );
+
+    tree.insert(
+        9,
+        mbr! {
+            X = [52; 62],
+            Y = [11; 21]
+        },
+    );
+
+    tree.insert(
+        10,
+        mbr! {
+            X = [62; 72],
+            Y = [11; 21]
+        },
+    );
+
+    tree.insert(
+        11,
+        mbr! {
+            X = [82; 92],
+            Y = [11; 21]
+        },
+    );
+
+    tree.insert(
+        12,
+        mbr! {
+            X = [92; 102],
+            Y = [11; 21]
+        },
+    );
+
+    let mut visitor = TestVisitor::new();
+    tree.visit(&mut visitor);
 }

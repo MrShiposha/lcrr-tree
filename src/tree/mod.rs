@@ -1,4 +1,5 @@
 pub mod mbr;
+pub mod visitor;
 mod node;
 
 #[cfg(test)]
@@ -7,7 +8,7 @@ pub mod test;
 use {
     crate::tree::{
         mbr::{CoordTrait, MBR},
-        node::{Node, NodeId, RecordId},
+        node::RecordId,
     },
     id_cache::Storage,
     petgraph::graphmap::UnGraphMap,
@@ -22,13 +23,17 @@ use {
     log::debug
 };
 
-type ChildIdStorage = Vec<RecordId>;
+pub use node::{Node, NodeId};
+pub use crate::tree::visitor::Visitor;
+
+pub type ChildIdStorage = Vec<RecordId>;
+pub type InternalNode<CoordT> = Node<CoordT, ChildIdStorage>;
 
 type RecordsNum = i16;
 
 macro_rules! node {
     (internal) => {
-        Node<CoordT, ChildIdStorage>
+        InternalNode<CoordT>
     };
 
     (data) => {
@@ -124,6 +129,10 @@ where
 
     //     handler(&mut node.mbr, &mut node.payload)
     // }
+
+    pub fn visit<V: Visitor<CoordT, ObjectT>>(&self, visitor: &mut V) {
+        self.visit_helper(visitor, self.storage.read().unwrap().root_id);
+    }
 
     pub fn search(&self, area: &MBR<CoordT>) -> Vec<NodeId> {
         let storage = self.storage.read().unwrap();
@@ -458,6 +467,21 @@ where
 
     fn make_children_storage(max_records: RecordsNum) -> ChildIdStorage {
         Vec::with_capacity(max_records as usize)
+    }
+
+    fn visit_helper<V: Visitor<CoordT, ObjectT>>(&self, visitor: &mut V, id: RecordId) {
+        match id {
+            RecordId::Data(id) => visitor.visit_data(self.storage.read().unwrap().get_data(id)),
+            _ => {
+                let storage = self.storage.read().unwrap();
+                let node = storage.get_node(id);
+                visitor.enter_node(node);
+                node.payload.iter().for_each(|&child_id| {
+                    self.visit_helper(visitor, child_id);
+                });
+                visitor.leave_node(node);
+            }
+        }
     }
 }
 
