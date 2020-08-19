@@ -35,3 +35,17 @@ pub struct Node<CoordT, PayloadT> {
     pub(crate) mbr: MBR<CoordT>,
     pub(crate) payload: PayloadT,
 }
+
+impl<CoordT, PayloadT> Node<CoordT, PayloadT> {
+    pub fn parent_id(&self) -> RecordId {
+        self.parent_id
+    }
+
+    pub fn mbr(&self) -> &MBR<CoordT> {
+        &self.mbr
+    }
+
+    pub fn payload(&self) -> &PayloadT {
+        &self.payload
+    }
+}

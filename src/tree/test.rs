@@ -293,9 +293,12 @@ fn test_tree_visitor() {
     }
 
     impl Visitor<i32, i32> for TestVisitor {
-        fn enter_node(&mut self, node: &InternalNode<i32>) {
+        fn enter_node(&mut self, record_id: RecordId, node: &InternalNode<i32>) {
             match node.parent_id {
-                RecordId::Root => assert_eq!(self.lvl, 0),
+                RecordId::Root => {
+                    assert_eq!(self.lvl, 0);
+                    assert_eq!(record_id, RecordId::Internal(2));
+                }
                 RecordId::Internal(_) => assert_eq!(self.lvl, 1),
                 RecordId::Leaf(_) => assert_eq!(self.lvl, 2),
                 _ => unreachable!(),
@@ -304,12 +307,13 @@ fn test_tree_visitor() {
             self.lvl += 1;
         }
 
-        fn leave_node(&mut self, _: &InternalNode<i32>) {
+        fn leave_node(&mut self, _: RecordId, _: &InternalNode<i32>) {
             self.lvl -= 1;
         }
 
-        fn visit_data(&mut self, node: &Node<i32, i32>) {
+        fn visit_data(&mut self, record_id: RecordId, node: &Node<i32, i32>) {
             assert!(matches!(node.payload, 1..=12));
+            assert!(matches!(record_id, RecordId::Data(_)));
             assert_eq!(self.lvl, 2);
         }
     }

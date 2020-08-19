@@ -6,10 +6,7 @@ pub mod visitor;
 pub mod test;
 
 use {
-    crate::tree::{
-        mbr::{CoordTrait, MBR},
-        node::RecordId,
-    },
+    crate::tree::mbr::{CoordTrait, MBR},
     id_cache::Storage,
     log::debug,
     petgraph::graphmap::UnGraphMap,
@@ -24,7 +21,7 @@ use {
 };
 
 pub use crate::tree::visitor::Visitor;
-pub use node::{Node, NodeId};
+pub use node::{Node, NodeId, RecordId};
 
 pub type ChildIdStorage = Vec<RecordId>;
 pub type InternalNode<CoordT> = Node<CoordT, ChildIdStorage>;
@@ -473,15 +470,17 @@ where
 
     fn visit_helper<V: Visitor<CoordT, ObjectT>>(&self, visitor: &mut V, id: RecordId) {
         match id {
-            RecordId::Data(id) => visitor.visit_data(self.storage.read().unwrap().get_data(id)),
+            RecordId::Data(data_id) => {
+                visitor.visit_data(id, self.storage.read().unwrap().get_data(data_id))
+            }
             _ => {
                 let storage = self.storage.read().unwrap();
                 let node = storage.get_node(id);
-                visitor.enter_node(node);
+                visitor.enter_node(id, node);
                 node.payload.iter().for_each(|&child_id| {
                     self.visit_helper(visitor, child_id);
                 });
-                visitor.leave_node(node);
+                visitor.leave_node(id, node);
             }
         }
     }
