@@ -1,22 +1,28 @@
 [package]
-name = "lcrr-tree"
+name = "lr-tree"
 version = "0.1.0"
 authors = ["Daniel Shiposha <shipdan@yandex.ru>"]
 edition = "2018"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[features]
+default = ["dbg-vis"]
+with-dbg-vis = ["dbg-vis", "dbg-vis/default", "dbg-vis/with-petgraph"]
 
 [dependencies]
-log = "0.4.8"
-petgraph = "0.5.1"
-id-cache = { git = "https://github.com/MrShiposha/id-cache.git" }
+log = "^0.4.8"
+petgraph = "^0.5.1"
+num = "^0.3.0"
+float-ord = "^0.2.0"
+id-storage = { git = "https://github.com/MrShiposha/id-storage.git" }
+
+[dependencies.dbg-vis]
+git = "https://github.com/MrShiposha/dbg-vis.git"
+default-features = false
+optional = true
+
+[dev-dependencies.proptest]
+version = "0.10.1"
 
 [dev-dependencies.cargo-husky]
 version = "1"
 features = ["precommit-hook", "run-cargo-test", "run-cargo-clippy", "run-cargo-fmt"]
-
-[dev-dependencies.regex]
-version = "1.3.9"
-
-[dev-dependencies.rtree-test]
-git = "https://github.com/MrShiposha/rtree-test.git"

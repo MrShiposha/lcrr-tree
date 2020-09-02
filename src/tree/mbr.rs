@@ -1,17 +1,15 @@
-use std::{
-    fmt::{self, Debug, Display},
-    ops::{Div, Mul, Sub},
+use {
+    num::{Num, NumCast},
+    std::{
+        cmp::{Ordering, PartialOrd},
+        fmt::{self, Debug, Display},
+        mem::MaybeUninit,
+    },
 };
 
-pub trait CoordTrait:
-    Debug + Clone + Default + Ord + Sub<Output = Self> + Mul<Output = Self> + Div<Output = Self>
-{
-}
+pub trait CoordTrait: Default + Debug + Num + NumCast + PartialOrd<Self> + Clone {}
 
-impl<T> CoordTrait for T where
-    T: Debug + Clone + Default + Ord + Sub<Output = T> + Mul<Output = T> + Div<Output = T>
-{
-}
+impl<T> CoordTrait for T where T: Default + Debug + Num + NumCast + PartialOrd<Self> + Clone {}
 
 #[derive(Debug)]
 pub struct Bounds<CoordT> {
@@ -21,7 +19,7 @@ pub struct Bounds<CoordT> {
 
 impl<CoordT: CoordTrait> Bounds<CoordT> {
     pub fn new(min: CoordT, max: CoordT) -> Self {
-        debug_assert!(min < max, "a min bound mast be less than a max bound");
+        debug_assert!(min.lt(&max), "a min bound must be less than a max bound");
 
         unsafe { Self::new_unchecked(min, max) }
     }
@@ -29,6 +27,8 @@ impl<CoordT: CoordTrait> Bounds<CoordT> {
     /// # Safety
     ///
     /// `min` must be less than `max`
+    ///
+    /// If `min > max` -- it is NOT UB, so it is possible, but not desirable.
     pub unsafe fn new_unchecked(min: CoordT, max: CoordT) -> Self {
         Self { min, max }
     }
@@ -69,20 +69,33 @@ impl<CoordT: CoordTrait> MBR<CoordT> {
     pub fn new(bounds: Vec<Bounds<CoordT>>) -> Self {
         debug_assert!(!bounds.is_empty(), "MBR can't be zero-dimension");
 
+        unsafe { Self::new_unchecked(bounds) }
+    }
+
+    /// # Safety
+    ///
+    /// `bounds` must be not empty.
+    ///
+    /// If `bounds` is empty -- it is NOT UB, so it is possible, but not desirable.
+    pub unsafe fn new_unchecked(bounds: Vec<Bounds<CoordT>>) -> Self {
         Self { bounds }
     }
 
     /// # Safety
     ///
     /// Use it only as "uninit" state
-    pub unsafe fn new_singularity(dimension: usize) -> Self {
-        Self::new(vec![
-            Bounds::new_unchecked(
-                CoordT::default(),
-                CoordT::default()
-            );
-            dimension
-        ])
+    /// # Notes
+    /// * `common_mbr`: for undefined MBR and any other MBR returns the other one.
+    /// * `intersects`: undefined MBR intersects with any other MBR.
+    /// * `dimension`: returns `0`.
+    /// * `bounds`: panics.
+    /// * `volume`: returns `0`.
+    pub unsafe fn undefined() -> Self {
+        Self::new_unchecked(vec![])
+    }
+
+    pub fn is_undefined(&self) -> bool {
+        self.bounds.is_empty()
     }
 
     pub fn dimension(&self) -> usize {
@@ -94,7 +107,12 @@ impl<CoordT: CoordTrait> MBR<CoordT> {
     }
 
     pub fn volume(&self) -> CoordT {
-        let init_volume = self.bounds.first().unwrap().length();
+        let init_volume = self
+            .bounds
+            .first()
+            .map(|bounds| bounds.length())
+            .unwrap_or_else(CoordT::zero);
+
         self.bounds
             .iter()
             .skip(1)
@@ -120,6 +138,10 @@ impl<CoordT: Eq> Eq for MBR<CoordT> {}
 
 impl<CoordT: CoordTrait> Display for MBR<CoordT> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> fmt::Result {
+        if self.is_undefined() {
+            return write!(f, "MBR {{ /undefined/ }}");
+        }
+
         write!(f, "MBR {{ ")?;
         for (i, bound) in self.bounds.iter().enumerate() {
             write!(f, "x{}: [{:?}; {:?}] ", i + 1, bound.min, bound.max)?;
@@ -134,11 +156,7 @@ pub fn intersects<CoordT: CoordTrait>(lhs: &MBR<CoordT>, rhs: &MBR<CoordT>) -> b
         return true;
     }
 
-    debug_assert_eq!(
-        lhs.dimension(),
-        rhs.dimension(),
-        "unable to compare MBRs with different dimensions"
-    );
+    let min_dim = std::cmp::min(lhs.dimension(), rhs.dimension());
 
     let mut intersected_axis = 0usize;
     for (self_bound, other_bound) in lhs.bounds.iter().zip(rhs.bounds.iter()) {
@@ -150,7 +168,7 @@ pub fn intersects<CoordT: CoordTrait>(lhs: &MBR<CoordT>, rhs: &MBR<CoordT>) -> b
         }
     }
 
-    intersected_axis == lhs.dimension()
+    intersected_axis == min_dim
 }
 
 pub fn common_mbr<CoordT: CoordTrait>(lhs: &MBR<CoordT>, rhs: &MBR<CoordT>) -> MBR<CoordT> {
@@ -158,16 +176,44 @@ pub fn common_mbr<CoordT: CoordTrait>(lhs: &MBR<CoordT>, rhs: &MBR<CoordT>) -> M
         return lhs.clone();
     }
 
-    debug_assert_eq!(
-        lhs.dimension(),
-        rhs.dimension(),
-        "unable to make common MBR for MBRs with different dimensions"
-    );
+    let lhs_dim = lhs.dimension();
+    let rhs_dim = rhs.dimension();
 
-    let bounds = lhs
-        .bounds
+    let lhs_bounds;
+    let rhs_bounds;
+
+    let mut bounds_ext = MaybeUninit::<Vec<Bounds<CoordT>>>::uninit();
+
+    match lhs_dim.cmp(&rhs_dim) {
+        Ordering::Equal => {
+            lhs_bounds = &lhs.bounds;
+            rhs_bounds = &rhs.bounds;
+        }
+        Ordering::Less => {
+            unsafe {
+                bounds_ext
+                    .as_mut_ptr()
+                    .write(extend_bounds(&lhs.bounds, &rhs.bounds))
+            }
+
+            lhs_bounds = unsafe { &*bounds_ext.as_ptr() };
+            rhs_bounds = &rhs.bounds;
+        }
+        Ordering::Greater => {
+            unsafe {
+                bounds_ext
+                    .as_mut_ptr()
+                    .write(extend_bounds(&rhs.bounds, &lhs.bounds))
+            }
+
+            lhs_bounds = &lhs.bounds;
+            rhs_bounds = unsafe { &*bounds_ext.as_ptr() };
+        }
+    }
+
+    let bounds = lhs_bounds
         .iter()
-        .zip(rhs.bounds.iter())
+        .zip(rhs_bounds)
         .map(|(lhs, rhs)| {
             let min = if lhs.min < rhs.min {
                 lhs.min.clone()
@@ -185,12 +231,63 @@ pub fn common_mbr<CoordT: CoordTrait>(lhs: &MBR<CoordT>, rhs: &MBR<CoordT>) -> M
         })
         .collect::<Vec<_>>();
 
-    MBR::new(bounds)
+    unsafe { MBR::new_unchecked(bounds) }
+}
+
+fn extend_bounds<CoordT: CoordTrait>(
+    src_bounds: &[Bounds<CoordT>],
+    target_bounds: &[Bounds<CoordT>],
+) -> Vec<Bounds<CoordT>> {
+    debug_assert!(!target_bounds.is_empty());
+    debug_assert!(src_bounds.len() < target_bounds.len());
+
+    let bounds_diff = target_bounds.len() - src_bounds.len();
+    let mut bounds = src_bounds.to_vec();
+
+    let Bounds { min, max } = target_bounds[0].clone();
+
+    let (min, max) = target_bounds
+        .iter()
+        .fold((min, max), |(mut min, mut max), bounds| {
+            if bounds.min.lt(&min) {
+                min = bounds.min.clone();
+            }
+
+            if bounds.max.gt(&max) {
+                max = bounds.max.clone();
+            }
+
+            (min, max)
+        });
+
+    // This bounds are invalid and will be replaced by common_mbr fn.
+    let bounds_ext = unsafe { Bounds::new_unchecked(max, min) };
+    for _ in 0..bounds_diff {
+        bounds.push(bounds_ext.clone());
+    }
+
+    bounds
+}
+
+pub fn common_mbr_from_iter<'a, I, CoordT>(iter: I) -> MBR<CoordT>
+where
+    I: Iterator<Item = &'a MBR<CoordT>>,
+    CoordT: CoordTrait + 'a,
+{
+    iter.fold(unsafe { MBR::undefined() }, |common, mbr| {
+        common_mbr(&common, &mbr)
+    })
+}
+
+pub fn mbr_delta<CoordT: CoordTrait>(src: &MBR<CoordT>, addition: &MBR<CoordT>) -> CoordT {
+    let common = common_mbr(src, addition);
+
+    common.volume() - src.volume()
 }
 
 #[cfg(test)]
 mod test {
-    use crate::mbr;
+    use crate::{mbr, mbr::MBR};
 
     #[test]
     fn test_new_mbr() {
@@ -198,6 +295,7 @@ mod test {
             X = [0; 10]
         };
 
+        assert!(!mbr.is_undefined());
         assert_eq!(mbr.dimension(), 1);
         assert_eq!(mbr.bounds[0].min, 0);
         assert_eq!(mbr.bounds[0].max, 10);
@@ -207,11 +305,19 @@ mod test {
             Y = [-10; -1]
         };
 
+        assert!(!mbr.is_undefined());
         assert_eq!(mbr.dimension(), 2);
         assert_eq!(mbr.bounds[0].min, 0);
         assert_eq!(mbr.bounds[0].max, 10);
         assert_eq!(mbr.bounds[1].min, -10);
         assert_eq!(mbr.bounds[1].max, -1);
+    }
+
+    #[test]
+    fn test_undefined() {
+        let undefined = unsafe { MBR::<u32>::undefined() };
+
+        assert!(undefined.is_undefined());
     }
 
     #[test]
@@ -233,7 +339,11 @@ mod test {
         assert_eq!(mbr.bounds(0).min, 0);
         assert_eq!(mbr.bounds(0).max, 10);
         assert_eq!(mbr.bounds(1).min, -10);
-        assert_eq!(mbr.bounds(1).max, -1)
+        assert_eq!(mbr.bounds(1).max, -1);
+
+        let undefined = unsafe { MBR::<u32>::undefined() };
+
+        assert_eq!(undefined.dimension(), 0);
     }
 
     #[test]
@@ -244,6 +354,14 @@ mod test {
         };
 
         mbr.bounds(mbr.dimension());
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_panic_undefined_bounds() {
+        let undefined = unsafe { MBR::<u32>::undefined() };
+
+        undefined.bounds(0);
     }
 
     #[test]
@@ -266,6 +384,10 @@ mod test {
         };
 
         assert_eq!(mbr.volume(), 32);
+
+        let undefined = unsafe { MBR::<u32>::undefined() };
+
+        assert_eq!(undefined.volume(), 0);
     }
 
     #[test]
@@ -353,6 +475,23 @@ mod test {
     }
 
     #[test]
+    fn test_mbr_intersects_undefined() {
+        let undefined = unsafe { MBR::undefined() };
+
+        let undefined_1 = unsafe { MBR::undefined() };
+
+        let mbr = mbr! {
+            X = [0; 10],
+            Y = [-3; 8]
+        };
+
+        assert!(mbr::intersects(&mbr, &undefined));
+        assert!(mbr::intersects(&undefined, &mbr));
+        assert!(mbr::intersects(&undefined, &undefined_1));
+        assert!(mbr::intersects(&undefined_1, &undefined));
+    }
+
+    #[test]
     fn test_common_mbr() {
         let mbr_0 = mbr! {
             X = [0; 10],
@@ -369,6 +508,52 @@ mod test {
         assert_eq!(common.bounds[0].max, 10);
         assert_eq!(common.bounds[1].min, -7);
         assert_eq!(common.bounds[1].max, 8);
+    }
+
+    #[test]
+    fn test_common_mbr_undefined() {
+        let undefined = unsafe { MBR::undefined() };
+
+        let mbr = mbr! {
+            X = [0; 10],
+            Y = [-3; 8]
+        };
+
+        let common = mbr::common_mbr(&mbr, &undefined);
+        assert_eq!(common, mbr);
+
+        let undefined_1 = unsafe { MBR::undefined() };
+
+        let common = mbr::common_mbr(&undefined, &undefined_1);
+        assert_eq!(common, undefined);
+        assert_eq!(common, undefined_1);
+        assert_eq!(common, unsafe { MBR::undefined() });
+    }
+
+    #[test]
+    fn test_common_mbr_iter() {
+        let mbr_0 = mbr! {
+            X = [0; 10],
+            Y = [-3; 8]
+        };
+
+        let mbr_1 = mbr! {
+            X = [-5; 4],
+            Y = [-7; -1]
+        };
+
+        let mbr_2 = mbr! {
+            X = [5; 19],
+            Y = [2;  9]
+        };
+
+        let mbrs = vec![mbr_0, mbr_1, mbr_2];
+
+        let common = mbr::common_mbr_from_iter(mbrs.iter());
+        assert_eq!(common.bounds[0].min, -5);
+        assert_eq!(common.bounds[0].max, 19);
+        assert_eq!(common.bounds[1].min, -7);
+        assert_eq!(common.bounds[1].max, 9);
     }
 
     fn test_mbr_dimension_intersects_with(

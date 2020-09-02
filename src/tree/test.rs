@@ -1,20 +1,56 @@
 use {
     crate::{
-        mbr,
-        tree::node::{Node, NodeId, RecordId},
-        InternalNode, LCRRTree, Visitor,
+        bind, mbr,
+        tree::{
+            node::{NodeId, RecordId, RecordIdKind},
+            DataNode,
+        },
+        InternalNode, LRTree, ObjSpace, Visitor,
     },
     std::collections::hash_set::HashSet,
 };
 
-include!("../../tests/res/test_logger.rs");
+use {
+    log::{LevelFilter, Metadata, Record},
+    std::sync::Once,
+};
+
+struct Logger;
+
+impl log::Log for Logger {
+    fn enabled(&self, _: &Metadata) -> bool {
+        true
+    }
+
+    fn log(&self, record: &Record) {
+        println!(
+            "|{}| {} - {}",
+            record.target(),
+            record.level(),
+            record.args()
+        );
+    }
+
+    fn flush(&self) {}
+}
+
+static LOGGER: Logger = Logger;
+static INIT: Once = Once::new();
+
+pub fn init_logger() {
+    INIT.call_once(|| {
+        log::set_logger(&LOGGER)
+            .map(|()| log::set_max_level(LevelFilter::Trace))
+            .unwrap();
+    })
+}
 
 #[test]
 fn test_tree_leaf() {
     init_logger();
 
-    let tree = LCRRTree::new(2, 2, 5);
-    let root_id = tree.storage.read().unwrap().root_id;
+    let tree = LRTree::with_obj_space(ObjSpace::new(2, 2, 5));
+    let root_id = tree.obj_space.read().unwrap().root_id;
 
     let first_id = tree.insert(
         "First",
@@ -25,15 +61,13 @@ fn test_tree_leaf() {
     );
 
     {
-        let storage = tree.storage.read().unwrap();
-        let tree_mbr = storage.get_mbr(root_id);
+        let obj_space = tree.obj_space.read().unwrap();
+        let tree_mbr = obj_space.get_mbr(root_id);
 
-        tree.access_object(first_id, |mbr, object| {
+        tree.access_object(first_id, |object, mbr| {
             assert_eq!(*object, "First");
             assert_eq!(*tree_mbr, *mbr);
         });
-
-        assert_eq!(storage.collisions.edge_count(), 0);
     }
 
     let second_id = tree.insert(
@@ -44,13 +78,13 @@ fn test_tree_leaf() {
         },
     );
 
-    tree.access_object(second_id, |_, object| {
+    tree.access_object(second_id, |object, _| {
         assert_eq!(*object, "Second");
     });
 
     {
-        let storage = tree.storage.read().unwrap();
-        let tree_mbr = storage.get_mbr(root_id);
+        let obj_space = tree.obj_space.read().unwrap();
+        let tree_mbr = obj_space.get_mbr(root_id);
 
         assert_eq!(
             *tree_mbr,
@@ -59,8 +93,6 @@ fn test_tree_leaf() {
                 Y = [-5; 10]
             }
         );
-
-        assert_eq!(storage.collisions.edge_count(), 0);
     }
 
     let set = tree.search(&mbr! {
@@ -99,13 +131,13 @@ fn test_tree_leaf() {
         },
     );
 
-    tree.access_object(third_id, |_, object| {
+    tree.access_object(third_id, |object, _| {
         assert_eq!(*object, "Third");
     });
 
     {
-        let storage = tree.storage.read().unwrap();
-        let tree_mbr = storage.get_mbr(root_id);
+        let obj_space = tree.obj_space.read().unwrap();
+        let tree_mbr = obj_space.get_mbr(root_id);
 
         assert_eq!(
             *tree_mbr,
@@ -114,18 +146,56 @@ fn test_tree_leaf() {
                 Y = [-5; 10]
             }
         );
-
-        assert_eq!(storage.collisions.edge_count(), 2);
-        assert!(storage.collisions.contains_edge(first_id, third_id));
-        assert!(storage.collisions.contains_edge(second_id, third_id));
     }
+}
+
+#[test]
+fn test_tree_builder_leaf() {
+    init_logger();
+
+    let data = vec![
+        (
+            "First",
+            mbr! {
+                X = [0; 10],
+                Y = [0; 10]
+            },
+        ),
+        (
+            "Second",
+            mbr! {
+                X = [-5; -3],
+                Y = [-5;  5]
+            },
+        ),
+        (
+            "Third",
+            mbr! {
+                X = [-4; 4],
+                Y = [ 2; 3]
+            },
+        ),
+    ];
+
+    let tree = LRTree::with_obj_space(ObjSpace::with_data(2, 2, 5, data));
+
+    let ids = tree.search(&mbr! {
+        X = [-4; 7],
+        Y = [-3; 5]
+    });
+
+    ids.iter()
+        .map(|&id| tree.access_object(id, |&obj, _| obj))
+        .for_each(|obj| {
+            assert!(matches!(obj, "First" | "Second" | "Third"));
+        });
 }
 
 #[test]
 fn test_tree_split() {
     init_logger();
 
-    let tree = LCRRTree::new(2, 2, 5);
+    let tree = LRTree::with_obj_space(ObjSpace::new(2, 2, 5));
     tree.insert(
         1,
         mbr! {
@@ -192,80 +262,72 @@ fn test_tree_split() {
 fn test_tree_same_delta() {
     init_logger();
 
-    let tree = LCRRTree::new(2, 2, 5);
-    let mut storage = tree.storage.write().unwrap();
+    let tree = LRTree::with_obj_space(ObjSpace::new(2, 2, 5));
+    let mut obj_space = tree.obj_space.write().unwrap();
 
-    let first_mbr = mbr! {
+    let first_node_id = obj_space.make_node(RecordIdKind::Leaf);
+    let node = obj_space.get_node_mut(first_node_id);
+    node.mbr = mbr! {
         X = [0; 5],
         Y = [0; 5]
     };
-    let first_node_id = RecordId::Leaf(storage.nodes.insert(Node {
-        parent_id: RecordId::Root,
-        mbr: first_mbr.clone(),
-        payload: vec![],
-    }));
 
-    let second_mbr = mbr! {
+    let second_node_id = obj_space.make_node(RecordIdKind::Leaf);
+    let node = obj_space.get_node_mut(second_node_id);
+    node.mbr = mbr! {
         X = [12; 13],
         Y = [-1; 4]
     };
-    let second_node_id = RecordId::Leaf(storage.nodes.insert(Node {
-        parent_id: RecordId::Root,
-        mbr: second_mbr.clone(),
-        payload: vec![],
-    }));
 
-    let root_id = storage.root_id;
-    let root = storage.nodes.get_mut(root_id.as_node_id());
-    root.payload.push(first_node_id);
-    root.payload.push(second_node_id);
-    root.mbr = mbr::common_mbr(&first_mbr, &second_mbr);
-    storage.root_id = RecordId::Internal(root_id.as_node_id());
+    let root_id = RecordId::from_node_id(obj_space.root_id.as_node_id(), RecordIdKind::Internal);
+    obj_space.root_id = root_id;
+    bind!([obj_space] root_id => first_node_id);
+    bind!([obj_space] root_id => second_node_id);
 
-    let node_0_data_0 = RecordId::Data(storage.data_nodes.insert(Node {
-        parent_id: first_node_id,
-        mbr: mbr! {
+    let node_0_data_0 = obj_space.make_data_node(
+        0,
+        mbr! {
             X = [0; 3],
             Y = [0; 3]
         },
-        payload: 0,
-    }));
+    );
+    obj_space.get_data_mut(node_0_data_0.as_node_id()).parent_id = first_node_id;
 
-    let node_0_data_1 = RecordId::Data(storage.data_nodes.insert(Node {
-        parent_id: first_node_id,
-        mbr: mbr! {
+    let node_0_data_1 = obj_space.make_data_node(
+        1,
+        mbr! {
             X = [4; 5],
             Y = [4; 5]
         },
-        payload: 1,
-    }));
+    );
+    obj_space.get_data_mut(node_0_data_1.as_node_id()).parent_id = first_node_id;
 
-    let node_1_data_0 = RecordId::Data(storage.data_nodes.insert(Node {
-        parent_id: second_node_id,
-        mbr: mbr! {
-            X = [13; 14],
+    let node_1_data_0 = obj_space.make_data_node(
+        0,
+        mbr! {
+            X = [12; 13],
             Y = [-1; 0]
         },
-        payload: 0,
-    }));
+    );
+    obj_space.get_data_mut(node_1_data_0.as_node_id()).parent_id = second_node_id;
 
-    let node_1_data_1 = RecordId::Data(storage.data_nodes.insert(Node {
-        parent_id: second_node_id,
-        mbr: mbr! {
-            X = [13; 14],
+    let node_1_data_1 = obj_space.make_data_node(
+        1,
+        mbr! {
+            X = [12; 13],
             Y = [3; 4]
         },
-        payload: 1,
-    }));
+    );
+    obj_space.get_data_mut(node_1_data_1.as_node_id()).parent_id = second_node_id;
 
-    let first = storage.get_node_mut(first_node_id);
+    let first = obj_space.get_node_mut(first_node_id);
     first.payload.push(node_0_data_0);
     first.payload.push(node_0_data_1);
 
-    let second = storage.get_node_mut(second_node_id);
+    let second = obj_space.get_node_mut(second_node_id);
     second.payload.push(node_1_data_0);
     second.payload.push(node_1_data_1);
-    std::mem::drop(storage);
+    std::mem::drop(obj_space);
 
     let test_record_id = tree.insert(
         2,
@@ -275,8 +337,8 @@ fn test_tree_same_delta() {
         },
     );
 
-    let storage = tree.storage.read().unwrap();
-    let test_leaf_id = storage.get_data(test_record_id).parent_id;
+    let obj_space = tree.obj_space.read().unwrap();
+    let test_leaf_id = obj_space.get_data(test_record_id).parent_id;
     assert_eq!(test_leaf_id, second_node_id);
 }
 
@@ -311,7 +373,7 @@ fn test_tree_visitor() {
             self.lvl -= 1;
         }
 
-        fn visit_data(&mut self, record_id: RecordId, node: &Node<i32, i32>) {
+        fn visit_data(&mut self, record_id: RecordId, node: &DataNode<i32, i32>) {
             assert!(matches!(node.payload, 1..=12));
             assert!(matches!(record_id, RecordId::Data(_)));
             assert_eq!(self.lvl, 2);
@@ -320,7 +382,7 @@ fn test_tree_visitor() {
 
     init_logger();
 
-    let tree = LCRRTree::new(2, 2, 5);
+    let tree = LRTree::with_obj_space(ObjSpace::new(2, 2, 5));
     tree.insert(
         1,
         mbr! {
