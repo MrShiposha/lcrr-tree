@@ -1,2 +1,2 @@
 # lr-tree
-Locking Collision Recording R-Tree
+Locking R-Tree
