@@ -19,7 +19,7 @@ pub struct Bounds<CoordT> {
 
 impl<CoordT: CoordTrait> Bounds<CoordT> {
     pub fn new(min: CoordT, max: CoordT) -> Self {
-        debug_assert!(min.lt(&max), "a min bound must be less than a max bound");
+        debug_assert!(min.le(&max), "a min bound must be less than a max bound");
 
         unsafe { Self::new_unchecked(min, max) }
     }
@@ -528,6 +528,33 @@ mod test {
         assert_eq!(common, undefined);
         assert_eq!(common, undefined_1);
         assert_eq!(common, unsafe { MBR::undefined() });
+    }
+
+    #[test]
+    fn test_1d_point_intersects() {
+        let mbr = mbr![X = [0; 10]];
+
+        for x in 0..=10 {
+            assert!(mbr::intersects(&mbr, &mbr![X = [x; x]]));
+        }
+
+        assert!(!mbr::intersects(&mbr, &mbr![X = [-1; -1]]));
+        assert!(!mbr::intersects(&mbr, &mbr![X = [11; 11]]));
+    }
+
+    #[test]
+    fn test_2d_line_intersects() {
+        let mbr = mbr! {
+            X = [0; 10],
+            Y = [0; 10]
+        };
+
+        for x in 0..=10 {
+            assert!(mbr::intersects(&mbr, &mbr![X = [x; x]]));
+        }
+
+        assert!(!mbr::intersects(&mbr, &mbr![X = [-1; -1]]));
+        assert!(!mbr::intersects(&mbr, &mbr![X = [11; 11]]));
     }
 
     #[test]
