@@ -125,6 +125,14 @@ impl<CoordT: CoordTrait, ObjectT: Debug + Clone> ObjSpace<CoordT, ObjectT> {
             .map(|(id, node)| (id, &node.payload, &node.mbr))
     }
 
+    pub fn get_data_mbr(&self, id: NodeId) -> &MBR<CoordT> {
+        &self.data_nodes.get(id).mbr
+    }
+
+    pub fn get_root_mbr(&self) -> &MBR<CoordT> {
+        self.get_mbr(self.root_id)
+    }
+
     pub(crate) fn iter_data_ids(&self) -> impl Iterator<Item = RecordId> {
         self.data_nodes.iter_ids().map(RecordId::Data)
     }
@@ -172,7 +180,7 @@ impl<CoordT: CoordTrait, ObjectT: Debug + Clone> ObjSpace<CoordT, ObjectT> {
 
     pub(crate) fn get_mbr(&self, id: RecordId) -> &MBR<CoordT> {
         match id {
-            RecordId::Data(id) => &self.data_nodes.get(id).mbr,
+            RecordId::Data(id) => self.get_data_mbr(id),
             _ => &self.nodes[id.as_node_id()].mbr,
         }
     }
