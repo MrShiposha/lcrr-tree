@@ -10,7 +10,7 @@ with-dbg-vis = ["dbg-vis", "dbg-vis/default", "dbg-vis/with-petgraph"]
 
 [dependencies]
 log = "^0.4.8"
-petgraph = "^0.5.1"
+petgraph = "*"
 num = "^0.3.0"
 float-ord = "^0.2.0"
 id-storage = { git = "https://github.com/MrShiposha/id-storage.git" }
