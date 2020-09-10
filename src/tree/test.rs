@@ -5,7 +5,7 @@ use {
             node::{NodeId, RecordId, RecordIdKind},
             DataNode,
         },
-        CoordTrait, InsertHandler, InternalNode, LRTree, ObjSpace, Visitor,
+        InsertHandler, InternalNode, LRTree, ObjSpace, Visitor,
     },
     std::collections::hash_set::HashSet,
 };

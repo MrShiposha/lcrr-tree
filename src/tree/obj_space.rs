@@ -4,7 +4,7 @@ use {
         RecordIdKind, MBR,
     },
     id_storage::ShrinkableStorage,
-    std::fmt::Debug,
+    std::{fmt::Debug, iter::Extend},
 };
 
 #[derive(Debug)]
@@ -220,5 +220,16 @@ impl<CoordT: CoordTrait, ObjectT: Debug + Clone> ObjSpace<CoordT, ObjectT> {
 
     pub(crate) fn get_data_mut(&mut self, id: NodeId) -> &mut DataNode<CoordT, ObjectT> {
         self.data_nodes.get_mut(id)
+    }
+}
+
+impl<CoordT: CoordTrait, ObjectT: Clone + Debug> Extend<(ObjectT, MBR<CoordT>)>
+    for ObjSpace<CoordT, ObjectT>
+{
+    fn extend<T: IntoIterator<Item = (ObjectT, MBR<CoordT>)>>(&mut self, iter: T) {
+        self.data_nodes.extend(
+            iter.into_iter()
+                .map(|(object, mbr)| Self::make_data_node_raw(object, mbr)),
+        );
     }
 }
