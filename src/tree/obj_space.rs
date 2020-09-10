@@ -129,6 +129,10 @@ impl<CoordT: CoordTrait, ObjectT: Debug + Clone> ObjSpace<CoordT, ObjectT> {
         &self.data_nodes.get(id).mbr
     }
 
+    pub fn get_data_payload(&self, id: NodeId) -> &ObjectT {
+        &self.get_data(id).payload
+    }
+
     pub fn get_root_mbr(&self) -> &MBR<CoordT> {
         self.get_mbr(self.root_id)
     }

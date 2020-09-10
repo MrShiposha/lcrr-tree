@@ -5,7 +5,7 @@ use {
             node::{NodeId, RecordId, RecordIdKind},
             DataNode,
         },
-        InternalNode, LRTree, ObjSpace, Visitor,
+        CoordTrait, InsertHandler, InternalNode, LRTree, ObjSpace, Visitor,
     },
     std::collections::hash_set::HashSet,
 };
@@ -150,6 +150,80 @@ fn test_tree_leaf() {
 }
 
 #[test]
+fn test_tree_search_access() {
+    init_logger();
+
+    let tree = LRTree::with_obj_space(ObjSpace::new(2, 2, 5));
+    let root_id = tree.obj_space.read().unwrap().root_id;
+
+    let first_id = tree.insert(
+        "First",
+        mbr! {
+            X = [0; 10],
+            Y = [0; 10]
+        },
+    );
+
+    {
+        let obj_space = tree.obj_space.read().unwrap();
+        let tree_mbr = obj_space.get_mbr(root_id);
+
+        tree.access_object(first_id, |object, mbr| {
+            assert_eq!(*object, "First");
+            assert_eq!(*tree_mbr, *mbr);
+        });
+    }
+
+    let second_id = tree.insert(
+        "Second",
+        mbr! {
+            X = [-5; -3],
+            Y = [-5;  5]
+        },
+    );
+
+    tree.access_object(second_id, |object, _| {
+        assert_eq!(*object, "Second");
+    });
+
+    {
+        let obj_space = tree.obj_space.read().unwrap();
+        let tree_mbr = obj_space.get_mbr(root_id);
+
+        assert_eq!(
+            *tree_mbr,
+            mbr! {
+                X = [-5; 10],
+                Y = [-5; 10]
+            }
+        );
+    }
+    tree.search_access(
+        &mbr! {
+            X = [7; 15],
+            Y = [2;  3]
+        },
+        |_, id| assert_eq!(id, first_id),
+    );
+
+    tree.search_access(
+        &mbr! {
+            X = [-7; -4],
+            Y = [ 2;  3]
+        },
+        |_, id| assert_eq!(id, second_id),
+    );
+
+    tree.search_access(
+        &mbr! {
+            X = [-4; 4],
+            Y = [ 2; 3]
+        },
+        |_, id| assert!([first_id, second_id].contains(&id)),
+    );
+}
+
+#[test]
 fn test_tree_builder_leaf() {
     init_logger();
 
@@ -256,6 +330,164 @@ fn test_tree_split() {
     let expected: HashSet<NodeId> = [0, 1, 2, 3, 4, 5].iter().cloned().collect();
 
     assert_eq!(set, expected);
+}
+
+#[test]
+fn test_tree_insert_transaction() {
+    init_logger();
+
+    let tree = LRTree::with_obj_space(ObjSpace::new(2, 2, 5));
+    tree.insert(
+        1,
+        mbr! {
+            X = [0; 10],
+            Y = [0; 10]
+        },
+    );
+
+    tree.insert(
+        2,
+        mbr! {
+            X = [11; 21],
+            Y = [ 0; 10]
+        },
+    );
+
+    tree.insert(
+        3,
+        mbr! {
+            X = [22; 32],
+            Y = [ 0; 10]
+        },
+    );
+
+    tree.insert(
+        4,
+        mbr! {
+            X = [ 0; 10],
+            Y = [11; 21]
+        },
+    );
+
+    tree.insert(
+        5,
+        mbr! {
+            X = [11; 21],
+            Y = [11; 21]
+        },
+    );
+
+    tree.insert(
+        6,
+        mbr! {
+            X = [22; 32],
+            Y = [11; 21]
+        },
+    );
+
+    macro_rules! new_value {
+        () => {
+            7
+        };
+    }
+
+    struct Handler;
+
+    impl InsertHandler<i32, i32> for Handler {
+        fn before_insert(&mut self, obj_space: &ObjSpace<i32, i32>, new_id: usize) {
+            assert_eq!(*obj_space.get_data_payload(new_id), new_value![]);
+
+            let expected: HashSet<NodeId> = [0, 1, 2, 3, 4, 5].iter().cloned().collect();
+            let mut intersections = HashSet::new();
+
+            LRTree::search_access_obj_space(obj_space, obj_space.get_data_mbr(new_id), |_, id| {
+                intersections.insert(id);
+            });
+
+            assert_eq!(intersections, expected);
+        }
+    }
+
+    tree.insert_transaction(
+        new_value![],
+        mbr! {
+            X = [3; 25],
+            Y = [3; 15]
+        },
+        &mut Handler,
+    );
+}
+
+#[test]
+fn test_tree_retain() {
+    init_logger();
+
+    let mut remove_values = vec![];
+    let tree = LRTree::with_obj_space(ObjSpace::new(2, 2, 5));
+    tree.insert(
+        1,
+        mbr! {
+            X = [0; 10],
+            Y = [0; 10]
+        },
+    );
+
+    let value = tree.insert(
+        2,
+        mbr! {
+            X = [11; 21],
+            Y = [ 0; 10]
+        },
+    );
+    remove_values.push(value);
+
+    tree.insert(
+        3,
+        mbr! {
+            X = [22; 32],
+            Y = [ 0; 10]
+        },
+    );
+
+    tree.insert(
+        4,
+        mbr! {
+            X = [ 0; 10],
+            Y = [11; 21]
+        },
+    );
+
+    let value = tree.insert(
+        5,
+        mbr! {
+            X = [11; 21],
+            Y = [11; 21]
+        },
+    );
+    remove_values.push(value);
+
+    tree.insert(
+        6,
+        mbr! {
+            X = [22; 32],
+            Y = [11; 21]
+        },
+    );
+
+    tree.retain(
+        &mbr! {
+            X = [3; 25],
+            Y = [3; 15]
+        },
+        |obj_space, id| !remove_values.contains(&obj_space.get_data_payload(id)),
+    );
+
+    let root_mbr = tree.lock_obj_space().get_root_mbr().clone();
+    let new_tree = LRTree::with_obj_space(tree.lock_obj_space().clone_shrinked());
+
+    new_tree.search_access(&root_mbr, |obj_space, id| {
+        assert!(!remove_values.contains(&obj_space.get_data_payload(id)))
+    });
 }
 
 #[test]

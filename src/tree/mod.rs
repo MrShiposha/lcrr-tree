@@ -10,18 +10,17 @@ mod test;
 #[cfg(test)]
 mod proptest;
 
-use {
-    crate::tree::mbr::{CoordTrait, MBR},
-    std::{
-        cmp::Ordering,
-        env,
-        fmt::Debug,
-        ops::Deref,
-        sync::{RwLock, RwLockReadGuard, RwLockWriteGuard},
-    },
+use std::{
+    cmp::Ordering,
+    env,
+    fmt::Debug,
+    sync::{RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
 
-pub use crate::tree::visitor::Visitor;
+pub use crate::tree::{
+    mbr::{CoordTrait, MBR},
+    visitor::Visitor,
+};
 pub use node::{Node, NodeId, RecordId, RecordIdKind};
 pub use obj_space::ObjSpace;
 pub use tree_builder::LRTreeBuilder;
@@ -82,10 +81,10 @@ macro_rules! bind {
     }};
 }
 
-pub trait InsertHandler<ResultT = Self> {
-    fn before_insert(&mut self, new_data_id: NodeId);
+pub trait InsertHandler<CoordT: CoordTrait, ObjectT: Clone> {
+    fn before_insert(&mut self, _: &ObjSpace<CoordT, ObjectT>, _: NodeId) {}
 
-    fn after_insert(&mut self, new_data_id: NodeId);
+    fn after_insert(&mut self, _: &ObjSpace<CoordT, ObjectT>, _: NodeId) {}
 }
 
 #[derive(Debug)]
@@ -169,7 +168,7 @@ where
         debug_log!("search in area {}", area);
 
         let root_id = obj_space.root_id;
-        Self::search_helper(&obj_space, root_id, area, &mut |&rec_id| {
+        Self::search_helper(&obj_space, root_id, area, &mut |_, &rec_id| {
             result.push(rec_id.as_node_id())
         });
 
@@ -178,14 +177,73 @@ where
         result
     }
 
+    pub fn search_access_obj_space<Handler>(
+        obj_space: &ObjSpace<CoordT, ObjectT>,
+        area: &MBR<CoordT>,
+        mut handler: Handler,
+    ) where
+        Handler: FnMut(&ObjSpace<CoordT, ObjectT>, NodeId),
+    {
+        debug_log!("search access in area {}", area);
+
+        let root_id = obj_space.root_id;
+        Self::search_helper(&obj_space, root_id, area, &mut |obj_space, &rec_id| {
+            handler(&*obj_space, rec_id.as_node_id());
+        });
+
+        debug_log!("search access in area {} -- COMPLETED", area);
+    }
+
+    pub fn search_access<H>(&self, area: &MBR<CoordT>, handler: H)
+    where
+        H: FnMut(&ObjSpace<CoordT, ObjectT>, NodeId),
+    {
+        let obj_space = self.obj_space.read().unwrap();
+
+        Self::search_access_obj_space(&*obj_space, area, handler);
+
+        // debug_log!("search access in area {}", area);
+
+        // let root_id = obj_space.root_id;
+        // Self::search_helper(
+        //     &obj_space,
+        //     root_id,
+        //     area,
+        //     &mut |obj_space, &rec_id| {
+        //         handler(&*obj_space, rec_id.as_node_id());
+        //     }
+        // );
+
+        // debug_log!("search access in area {} -- COMPLETED", area);
+    }
+
+    pub fn retain<P>(&self, area: &MBR<CoordT>, mut predicate: P)
+    where
+        P: FnMut(&ObjSpace<CoordT, ObjectT>, NodeId) -> bool,
+    {
+        let mut obj_space = self.obj_space.write().unwrap();
+        let mut remove_list = vec![];
+
+        debug_log!("retain in area {}", area);
+
+        let root_id = obj_space.root_id;
+        Self::search_helper(&obj_space, root_id, area, &mut |obj_space, &rec_id| {
+            let data_id = rec_id.as_node_id();
+
+            if !predicate(&*obj_space, data_id) {
+                remove_list.push(data_id);
+            }
+        });
+
+        obj_space.mark_as_removed(remove_list.into_iter());
+
+        debug_log!("retain in area {} -- COMPLETED", area);
+    }
+
     pub fn insert(&self, object: ObjectT, mbr: MBR<CoordT>) -> NodeId {
         struct DefaultHelper;
 
-        impl InsertHandler for DefaultHelper {
-            fn before_insert(&mut self, _: NodeId) {}
-
-            fn after_insert(&mut self, _: NodeId) {}
-        }
+        impl<CoordT: CoordTrait, ObjectT: Clone> InsertHandler<CoordT, ObjectT> for DefaultHelper {}
 
         self.insert_transaction(object, mbr, &mut DefaultHelper)
     }
@@ -194,7 +252,7 @@ where
         &self,
         object: ObjectT,
         mbr: MBR<CoordT>,
-        helper: &mut impl InsertHandler,
+        helper: &mut impl InsertHandler<CoordT, ObjectT>,
     ) -> NodeId {
         let mut obj_space = self.obj_space.write().unwrap();
         assert_eq!(mbr.dimension(), obj_space.dimension, "unexpected dimension");
@@ -202,13 +260,13 @@ where
         let new_object_id = obj_space.make_data_node(object, mbr);
         let new_object_node_id = new_object_id.as_node_id();
 
-        helper.before_insert(new_object_node_id);
+        helper.before_insert(&*obj_space, new_object_node_id);
 
         Self::insert_helper(&mut obj_space, new_object_id, |node_id, _| {
             matches![node_id, RecordId::Leaf(_)]
         });
 
-        helper.after_insert(new_object_node_id);
+        helper.after_insert(&*obj_space, new_object_node_id);
 
         new_object_node_id
     }
@@ -347,14 +405,13 @@ where
         debug_log!("[COMPLETED] fix tree");
     }
 
-    fn search_helper<Storage, Handler>(
-        obj_space: &Storage,
+    fn search_helper<Handler>(
+        obj_space: &ObjSpace<CoordT, ObjectT>,
         node_id: RecordId,
         area: &MBR<CoordT>,
         handler: &mut Handler,
     ) where
-        Storage: Deref<Target = ObjSpace<CoordT, ObjectT>>,
-        Handler: FnMut(&RecordId),
+        Handler: FnMut(&ObjSpace<CoordT, ObjectT>, &RecordId),
     {
         if obj_space.is_empty() {
             return;
@@ -366,7 +423,7 @@ where
                 .payload
                 .iter()
                 .filter(filter_intersections!(area in obj_space))
-                .for_each(|child_id| handler(child_id)),
+                .for_each(|child_id| handler(obj_space, child_id)),
             _ => node
                 .payload
                 .iter()
