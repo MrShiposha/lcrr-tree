@@ -153,6 +153,10 @@ impl<CoordT: CoordTrait, ObjectT: Debug + Clone> ObjSpace<CoordT, ObjectT> {
         }
     }
 
+    pub(crate) fn restore_removed(&mut self) {
+        self.data_nodes.restore_freed();
+    }
+
     pub(crate) fn set_parent_info(&mut self, id: RecordId, parent_id: RecordId) {
         match id {
             RecordId::Data(id) => {

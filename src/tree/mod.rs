@@ -312,6 +312,10 @@ where
         self.obj_space.write().unwrap().mark_as_removed(data_ids);
     }
 
+    pub fn restore_removed(&self) {
+        self.obj_space.write().unwrap().restore_removed();
+    }
+
     fn insert_helper<P>(obj_space: &mut obj_space![], insert_node_id: RecordId, predicate: P)
     where
         P: FnMut(RecordId, usize) -> bool,
