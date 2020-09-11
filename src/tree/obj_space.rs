@@ -75,6 +75,12 @@ impl<CoordT: CoordTrait, ObjectT: Debug + Clone> ObjSpace<CoordT, ObjectT> {
         storage
     }
 
+    pub(crate) fn clear_tree_structure(&mut self) {
+        self.nodes.clear();
+
+        self.root_id = self.make_node(RecordIdKind::Leaf);
+    }
+
     pub(crate) fn make_node(&mut self, node_id_kind: RecordIdKind) -> RecordId {
         self.make_node_with_mbr(node_id_kind, unsafe { MBR::undefined() })
     }

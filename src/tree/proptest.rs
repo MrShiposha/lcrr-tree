@@ -175,18 +175,16 @@ fn static_build_tree(test_params: &TestParams) -> Tree {
         as_objects(test_params.mbrs.iter()),
     );
 
-    let tree = Tree::with_obj_space(tree::ObjSpace::new(
-        test_params.dim,
-        test_params.min_records,
-        test_params.max_records,
-    ));
+    let tree = Tree::with_obj_space(obj_space);
 
     dbg_vis!(watch.tree);
 
-    let mut builder = tree::LRTreeBuilder::with_obj_space(obj_space);
-    builder.build_with_alpha(test_params.alpha);
+    tree.rebuild(test_params.alpha);
 
-    tree.set_build(builder);
+    // let mut builder = tree::LRTreeBuilder::with_obj_space(obj_space);
+    // builder.build_with_alpha(test_params.alpha);
+
+    // tree.set_build(builder);
 
     dbg_vis!(watch.tree);
 
@@ -208,10 +206,13 @@ fn hybrid_build_tree(test_params: &TestParams) -> Tree {
     tree
 }
 
-fn remake_static_tree(old_tree: &Tree) -> Tree {
+fn remake_static_tree(old_tree: &Tree, test_params: &TestParams) -> Tree {
     let obj_space = old_tree.lock_obj_space().clone_shrinked();
 
-    Tree::with_obj_space(obj_space)
+    let tree = Tree::with_obj_space(obj_space);
+    tree.rebuild(test_params.alpha);
+
+    tree
 }
 
 fn search_intersections<'a>(
@@ -286,7 +287,7 @@ proptest! {
 
         static_tree.mark_as_removed(test_params.mark_removed.iter().cloned());
 
-        let static_tree_removed = remake_static_tree(&static_tree);
+        let static_tree_removed = remake_static_tree(&static_tree, &test_params);
         dbg_vis!(watch.removed_tree = static_tree_removed);
 
         let expected_found_removed = expected_found.difference(&test_params.mark_removed)
