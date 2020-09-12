@@ -109,16 +109,6 @@ where
         Self { obj_space }
     }
 
-    // pub fn set_build(&self, mut builder: LRTreeBuilder<CoordT, ObjectT>) {
-    //     debug_log!("set new build");
-
-    //     builder.build();
-
-    //     *self.obj_space.write().unwrap() = builder.obj_space;
-
-    //     debug_log!("set new build -- success");
-    // }
-
     pub fn rebuild(&self, alpha: f32) {
         let mut obj_space = self.obj_space.write().unwrap();
 
@@ -184,15 +174,15 @@ where
         handler(&node.payload, &node.mbr)
     }
 
-    // pub fn access_object_mut<H>(&self, record_id: RecordId, mut handler: H)
-    // where
-    //     H: FnMut(&mut MBR<CoordT>, &mut ObjectT)
-    // {
-    //     let mut obj_space = self.obj_space.write().unwrap();
-    //     let node = obj_space.get_data_mut(record_id);
+    pub fn access_object_mut<H>(&self, record_id: NodeId, mut handler: H)
+    where
+        H: FnMut(&mut MBR<CoordT>, &mut ObjectT)
+    {
+        let mut obj_space = self.obj_space.write().unwrap();
+        let node = obj_space.get_data_mut(record_id);
 
-    //     handler(&mut node.mbr, &mut node.payload)
-    // }
+        handler(&mut node.mbr, &mut node.payload)
+    }
 
     pub fn visit<V: Visitor<CoordT, ObjectT>>(&self, visitor: &mut V) {
         if self.obj_space.read().unwrap().is_empty() {
