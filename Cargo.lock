@@ -93,7 +93,7 @@ checksum = "00d63df3d41950fb462ed38308eea019113ad1508da725bbedcd0fa5a85ef5f7"
 [[package]]
 name = "id-storage"
 version = "0.1.0"
-source = "git+https://github.com/MrShiposha/id-storage.git#0f8733fe6feb0a9d15947c887c17b2d95d0b6fd2"
+source = "git+https://github.com/MrShiposha/id-storage.git#a20460730ab3550dc4ebf87f27b0a9f5c989d424"
 
 [[package]]
 name = "indexmap"

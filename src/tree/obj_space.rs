@@ -51,6 +51,16 @@ impl<CoordT: CoordTrait, ObjectT: Debug + Clone> ObjSpace<CoordT, ObjectT> {
         )
     }
 
+
+    /// # Safety
+    /// After call of this function `rebuild` must be called.
+    pub unsafe fn retain_data<P>(&mut self, mut predicate: P)
+    where
+        P: FnMut(&ObjectT, &MBR<CoordT>) -> bool
+    {
+        self.data_nodes.retain(|node| predicate(&node.payload, &node.mbr))
+    }
+
     pub(crate) fn with_data_nodes(
         dimension: usize,
         min_records: usize,
