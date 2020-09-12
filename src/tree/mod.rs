@@ -168,6 +168,10 @@ where
         self.obj_space.read().unwrap()
     }
 
+    pub fn lock_obj_space_write(&self) -> RwLockWriteGuard<ObjSpace<CoordT, ObjectT>> {
+        self.obj_space.write().unwrap()
+    }
+
     pub fn access_object<H, R>(&self, record_id: NodeId, mut handler: H) -> R
     where
         H: FnMut(&ObjectT, &MBR<CoordT>) -> R,
