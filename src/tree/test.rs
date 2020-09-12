@@ -523,7 +523,7 @@ fn test_tree_same_delta() {
             Y = [0; 3]
         },
     );
-    obj_space.get_data_mut(node_0_data_0.as_node_id()).parent_id = first_node_id;
+    obj_space.get_data_mut(node_0_data_0).parent_id = first_node_id;
 
     let node_0_data_1 = obj_space.make_data_node(
         1,
@@ -532,7 +532,7 @@ fn test_tree_same_delta() {
             Y = [4; 5]
         },
     );
-    obj_space.get_data_mut(node_0_data_1.as_node_id()).parent_id = first_node_id;
+    obj_space.get_data_mut(node_0_data_1).parent_id = first_node_id;
 
     let node_1_data_0 = obj_space.make_data_node(
         0,
@@ -541,7 +541,7 @@ fn test_tree_same_delta() {
             Y = [-1; 0]
         },
     );
-    obj_space.get_data_mut(node_1_data_0.as_node_id()).parent_id = second_node_id;
+    obj_space.get_data_mut(node_1_data_0).parent_id = second_node_id;
 
     let node_1_data_1 = obj_space.make_data_node(
         1,
@@ -550,15 +550,15 @@ fn test_tree_same_delta() {
             Y = [3; 4]
         },
     );
-    obj_space.get_data_mut(node_1_data_1.as_node_id()).parent_id = second_node_id;
+    obj_space.get_data_mut(node_1_data_1).parent_id = second_node_id;
 
     let first = obj_space.get_node_mut(first_node_id);
-    first.payload.push(node_0_data_0);
-    first.payload.push(node_0_data_1);
+    first.payload.push(RecordId::Data(node_0_data_0));
+    first.payload.push(RecordId::Data(node_0_data_1));
 
     let second = obj_space.get_node_mut(second_node_id);
-    second.payload.push(node_1_data_0);
-    second.payload.push(node_1_data_1);
+    second.payload.push(RecordId::Data(node_1_data_0));
+    second.payload.push(RecordId::Data(node_1_data_1));
     std::mem::drop(obj_space);
 
     let test_record_id = tree.insert(

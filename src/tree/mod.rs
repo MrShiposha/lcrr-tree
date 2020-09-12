@@ -298,7 +298,7 @@ where
         let mut obj_space = self.obj_space.write().unwrap();
         assert_eq!(mbr.dimension(), obj_space.dimension, "unexpected dimension");
 
-        let new_object_id = obj_space.make_data_node(object, mbr);
+        let new_object_id = RecordId::Data(obj_space.make_data_node(object, mbr));
         let new_object_node_id = new_object_id.as_node_id();
 
         helper.before_insert(&*obj_space, new_object_node_id);

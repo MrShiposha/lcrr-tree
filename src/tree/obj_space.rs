@@ -98,10 +98,10 @@ impl<CoordT: CoordTrait, ObjectT: Debug + Clone> ObjSpace<CoordT, ObjectT> {
         RecordId::from_node_id(id, node_id_kind)
     }
 
-    pub fn make_data_node(&mut self, object: ObjectT, mbr: MBR<CoordT>) -> RecordId {
+    pub fn make_data_node(&mut self, object: ObjectT, mbr: MBR<CoordT>) -> NodeId {
         let node = Self::make_data_node_raw(object, mbr);
 
-        RecordId::Data(self.data_nodes.insert(node))
+        self.data_nodes.insert(node)
     }
 
     fn make_data_node_raw(object: ObjectT, mbr: MBR<CoordT>) -> DataNode<CoordT, ObjectT> {
