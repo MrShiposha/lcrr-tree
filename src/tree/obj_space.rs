@@ -51,14 +51,14 @@ impl<CoordT: CoordTrait, ObjectT: Debug + Clone> ObjSpace<CoordT, ObjectT> {
         )
     }
 
-
     /// # Safety
     /// After call of this function `rebuild` must be called.
     pub unsafe fn retain_data<P>(&mut self, mut predicate: P)
     where
-        P: FnMut(&ObjectT, &MBR<CoordT>) -> bool
+        P: FnMut(&ObjectT, &MBR<CoordT>) -> bool,
     {
-        self.data_nodes.retain(|node| predicate(&node.payload, &node.mbr))
+        self.data_nodes
+            .retain(|node| predicate(&node.payload, &node.mbr))
     }
 
     pub(crate) fn with_data_nodes(
@@ -157,10 +157,12 @@ impl<CoordT: CoordTrait, ObjectT: Debug + Clone> ObjSpace<CoordT, ObjectT> {
         self.data_nodes.iter_ids().map(RecordId::Data)
     }
 
-    pub(crate) fn mark_as_removed<I: Iterator<Item = NodeId>>(&mut self, data_ids: I) {
-        unsafe {
-            self.data_nodes.free_ids(data_ids);
-        }
+    pub fn mark_as_removed<I: Iterator<Item = NodeId>>(&mut self, data_ids: I) {
+        self.data_nodes.free_ids(data_ids);
+    }
+
+    pub fn is_removed(&self, data_id: &NodeId) -> bool {
+        self.data_nodes.is_id_free(data_id)
     }
 
     pub(crate) fn restore_removed(&mut self) {

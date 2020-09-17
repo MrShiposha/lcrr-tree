@@ -17,7 +17,7 @@ use std::{
 };
 
 pub use crate::tree::{
-    mbr::{CoordTrait, MBR, Bounds},
+    mbr::{Bounds, CoordTrait, MBR},
     visitor::Visitor,
 };
 pub use node::{Node, NodeId, RecordId, RecordIdKind};
@@ -128,9 +128,7 @@ where
             level = 1;
             obj_space.root_id.set_kind(RecordIdKind::Leaf);
         } else {
-            level = (data_num as f64)
-                .log(obj_space.max_records as f64)
-                .ceil() as usize;
+            level = (data_num as f64).log(obj_space.max_records as f64).ceil() as usize;
             obj_space.root_id.set_kind(RecordIdKind::Internal);
         }
 
@@ -176,7 +174,7 @@ where
 
     pub fn access_object_mut<H>(&self, record_id: NodeId, mut handler: H)
     where
-        H: FnMut(&mut ObjectT, &mut MBR<CoordT>)
+        H: FnMut(&mut ObjectT, &mut MBR<CoordT>),
     {
         let mut obj_space = self.obj_space.write().unwrap();
         let node = obj_space.get_data_mut(record_id);
@@ -640,7 +638,7 @@ where
         alpha: f32,
         node_id: RecordId,
         level: usize,
-        unbinded_ids: &mut [RecordId]
+        unbinded_ids: &mut [RecordId],
     ) {
         let new_node_id_kind;
         match level {
@@ -690,26 +688,20 @@ where
         let first_group_coeff = node_child_num / 2;
         let second_group_coeff = node_child_num - first_group_coeff;
 
-        let (group_1, group_2) =
-            Self::split_into_2_groups(
-                obj_space,
-                alpha,
-                first_group_coeff,
-                second_group_coeff,
-                level,
-                unbinded_ids
-            );
+        let (group_1, group_2) = Self::split_into_2_groups(
+            obj_space,
+            alpha,
+            first_group_coeff,
+            second_group_coeff,
+            level,
+            unbinded_ids,
+        );
 
         let (_, ref mbr_1) = group_1;
         if !mbr_1.is_undefined() {
             if first_group_coeff > 1 {
-                sub_group_1 = Self::split_groups(
-                    obj_space,
-                    alpha,
-                    first_group_coeff,
-                    level,
-                    group_1.0
-                );
+                sub_group_1 =
+                    Self::split_groups(obj_space, alpha, first_group_coeff, level, group_1.0);
             } else {
                 sub_group_1 = vec![group_1]
             }
@@ -720,13 +712,8 @@ where
         let (_, ref mbr_2) = group_2;
         if !mbr_2.is_undefined() {
             if second_group_coeff > 1 {
-                sub_group_2 = Self::split_groups(
-                    obj_space,
-                    alpha,
-                    second_group_coeff,
-                    level,
-                    group_2.0
-                );
+                sub_group_2 =
+                    Self::split_groups(obj_space, alpha, second_group_coeff, level, group_2.0);
             } else {
                 sub_group_2 = vec![group_2];
             }
@@ -864,7 +851,7 @@ where
 
     fn find_sort_axis_index<'ids>(
         obj_space: &mut ObjSpace<CoordT, ObjectT>,
-        unbinded_ids: &'ids [RecordId]
+        unbinded_ids: &'ids [RecordId],
     ) -> usize {
         (0..obj_space.dimension)
             .map(|dim| (dim, unbinded_ids.iter()))
