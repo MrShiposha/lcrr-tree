@@ -145,8 +145,16 @@ impl<CoordT: CoordTrait, ObjectT: Debug + Clone> ObjSpace<CoordT, ObjectT> {
         &self.data_nodes.get(id).mbr
     }
 
+    pub fn set_data_mbr(&mut self, id: NodeId, mbr: MBR<CoordT>) {
+        self.data_nodes.get_mut(id).mbr = mbr;
+    }
+
     pub fn get_data_payload(&self, id: NodeId) -> &ObjectT {
         &self.get_data(id).payload
+    }
+
+    pub fn get_data_payload_mut(&mut self, id: NodeId) -> &mut ObjectT {
+        &mut self.get_data_mut(id).payload
     }
 
     pub fn get_root_mbr(&self) -> &MBR<CoordT> {
@@ -213,7 +221,7 @@ impl<CoordT: CoordTrait, ObjectT: Debug + Clone> ObjSpace<CoordT, ObjectT> {
 
     pub(crate) fn set_mbr(&mut self, id: RecordId, mbr: MBR<CoordT>) {
         match id {
-            RecordId::Data(id) => self.data_nodes.get_mut(id).mbr = mbr,
+            RecordId::Data(id) => self.set_data_mbr(id, mbr),
             _ => self.nodes[id.as_node_id()].mbr = mbr,
         }
     }
