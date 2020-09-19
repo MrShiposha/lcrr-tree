@@ -269,6 +269,29 @@ where
         debug_log!("retain in area {} -- COMPLETED", area);
     }
 
+    pub fn retain_mut<P>(&self, area: &MBR<CoordT>, mut predicate: P)
+    where
+        P: FnMut(&mut ObjSpace<CoordT, ObjectT>, NodeId) -> bool,
+    {
+        let mut obj_space = self.obj_space.write().unwrap();
+        let mut remove_list = vec![];
+
+        debug_log!("retain mut in area {}", area);
+
+        let root_id = obj_space.root_id;
+        Self::search_helper_mut(&mut obj_space, root_id, area, &mut |obj_space, &rec_id| {
+            let data_id = rec_id.as_node_id();
+
+            if !predicate(&mut *obj_space, data_id) {
+                remove_list.push(data_id);
+            }
+        });
+
+        obj_space.mark_as_removed(remove_list.into_iter());
+
+        debug_log!("retain mut in area {} -- COMPLETED", area);
+    }
+
     pub fn insert(&self, object: ObjectT, mbr: MBR<CoordT>) -> NodeId {
         struct DefaultHelper;
 
@@ -464,6 +487,37 @@ where
                 .for_each(|&child_id| {
                     Self::search_helper(obj_space, child_id, area, handler);
                 }),
+        }
+    }
+
+    fn search_helper_mut<Handler>(
+        obj_space: &mut ObjSpace<CoordT, ObjectT>,
+        node_id: RecordId,
+        area: &MBR<CoordT>,
+        handler: &mut Handler,
+    ) where
+        Handler: FnMut(&mut ObjSpace<CoordT, ObjectT>, &RecordId),
+    {
+        if obj_space.is_empty() {
+            return;
+        }
+
+        let children = obj_space
+            .get_node(node_id)
+            .payload
+            .clone()
+            .iter()
+            .filter(filter_intersections!(area in obj_space))
+            .cloned()
+            .collect::<Vec<_>>();
+
+        match node_id {
+            RecordId::Leaf(_) => children
+                .iter()
+                .for_each(|child_id| handler(obj_space, child_id)),
+            _ => children.iter().for_each(|&child_id| {
+                Self::search_helper_mut(obj_space, child_id, area, handler);
+            }),
         }
     }
 
